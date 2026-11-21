@@ -97,7 +97,7 @@ stress cases, the action's cap and CHF 1 grid, and the 6-month horizon. Not prob
 not forecasts, not advice. `rankUnknowns` is a heuristic, not proven-optimal question
 selection. Months are zero-based; UIs display `month + 1`.
 
-### Insight layer (UX contract — `core/.../Insight.kt`, types in place, logic next)
+### Insight layer (UX contract — `Insight.kt` types + `Brief.kt` logic, implemented)
 
 Principle: maximum intelligence in the engine, minimum cognitive load in the UI. Guardian /
 Skeptic / Explorer are internal analyses, not personalities. The engine turns their
@@ -109,32 +109,63 @@ evidence into **one** primary insight and at most **one** question; the UI only 
 | 2 Explore | simple timeline, baseline vs. alternative, the event causing the difference, one adjustable input | `scenarioIds` → `SimulationResult`, `facts` |
 | 3 Inspect | all inputs with `Provenance`, bounds, calculation steps, witness, constraint checks, search scope | `facts.evidenceRef` → `StressTest` / `RepairSearch` / `UnknownImpact` / `MonthRecord` |
 
-Planned API (Developer A, next milestone):
+#### API for Developer B (the only calls the UI needs)
 
 ```kotlin
-sealed interface InputState { Known(value) ; Range(low, high) ; Unknown(low, high) }  // + Provenance
-data class DecisionSession(profile, baseline: Scenario, decision: (inputs) -> Scenario,
-                           inputs: Map<String, InputState>, stress, floor, repairCap,
-                           seenInsightIds: Set<String>)
-fun brief(session: DecisionSession): Briefing                 // pure, deterministic
-fun DecisionSession.answer(inputId: String, value: InputState): DecisionSession  // "I'm not sure" = Unknown
+var session = SampleData.alexSession          // deposit starts Unknown (searched over CHF 1,300–1,700)
+var b: Briefing = brief(session)              // pure + deterministic; JVM ~1 s for this session → call off the UI thread
+session = session.answer("deposit", InputState.Exact(Chf.francs(1_400)))   // or Range(low, high) / InputState.Unknown ("I'm not sure")
+session = session.markSeen(listOf(b.primary.id))
+b = brief(session)                            // recompute after every change
 ```
 
-`brief()` builds candidate insights from `stressTest`, `rankUnknowns`,
-`findMinimalMonthlyRepair` and `findLatestFeasibleStart`, then ranks them with fixed,
-documented rules (no ML, no LLM):
+`Briefing` (Insight.kt):
+- `primary: FinancialInsight` — render `headlineKey` with its `facts`; always show `limitationKeys`.
+- `followUp: FollowUpQuestion?` — `promptKey`, `answer` = `AnswerSpec.MoneyRange(low, high, step)`,
+  `whyFacts`, `allowsUnsure` (always true). Null = nothing worth asking.
+- `actions: List<UserAction>` — in display order: `answer:<input>`, `explore:repair` (scenario
+  `decision-repaired`), `explore:baseline` (scenario `baseline`), `correct:<input>`, `inspect`.
+- `moreInsights` — Explore/Inspect only, already ordered.
+- `disclosureKeys` — **always render at level 1.**
+- `scenarios: Map<String, SimulationResult>` — `baseline`, `decision-nominal`, `decision-worst`,
+  and `decision-repaired` (only when a repair exists). Use `.cashByMonth` / `.months` for charts.
+- `evidence: BriefingEvidence` — `worstCaseInputs`, `valueCombinationsChecked`,
+  `stressCasesPerCombination`, `worstStressTest` (witness, `firstViolationMonth`, …),
+  `passesForAllTestedValues`, `failsForAllTestedValues`, `unknownImpacts`, `repairs` (per start month).
 
-1. A supported floor breach (`LIQUIDITY_BREACH` / `FRAGILE_PLAN`) is the primary insight —
-   unless an unknown can flip it, in which case it stays primary but is worded
-   "could" and the unknown becomes the `followUp`.
-2. Otherwise `ROBUST_CONCLUSION` (reassuring) is primary.
-3. `followUp` = highest-ranked `DECISION_CHANGING_UNKNOWN` (flips first, then swing),
-   skipped if already answered or answered "unsure" with no new information.
-4. Actions: `FEASIBLE_REPAIR` / alternative scenario first, then `ACTION_DEADLINE`;
-   `NO_REPAIR_IN_SCOPE` is stated, never hidden.
-5. Tie-breaks: unseen before seen, then severity, then insight id (stable ordering).
-6. `disclosureKeys` (fictional, hypothetical, tested cases only, cash only) are attached to
-   every `Briefing` and are never subject to ranking.
+Keys the UI must have text for (EN first):
+
+| Kind | Keys |
+|---|---|
+| Headlines | `insight.fragile_plan`, `insight.fragile_plan.depends_on_input`, `insight.liquidity_breach`, `insight.liquidity_breach.depends_on_input`, `insight.robust`, `insight.unknown_changes_decision`, `insight.feasible_repair`, `insight.action_deadline`, `insight.no_repair_in_scope` |
+| Facts | `worst_min_cash`, `floor`, `cases_checked`, `low_income_months`, `first_violation_month`, `floor_shortfall`, `nominal_min_cash`, `margin`, `input:<id>`, `passes_up_to`, `swing`, `values_checked`, `monthly_reduction`, `start_month`, `repair_cap`, `candidates_checked`, `latest_start_month`, `monthly_reduction_at_latest` |
+| Questions | `question.deposit` (the `DecisionInput.questionKey`) |
+| Actions | `action.answer_question`, `action.explore_repair`, `action.compare_baseline`, `action.correct_input`, `action.inspect` |
+| Disclosures / limitations | the constants in `Keys` (`disclosure.*`, `limitation.*`) |
+
+Months in facts are zero-based → display `index + 1`. `FactValue.Money` is exact `Chf`; format
+with `Chf.format()`. Never compute a number in the UI; everything shown is a fact or a scenario.
+
+#### How `brief()` decides (fixed rules, no ML, no LLM)
+
+1. **Verdict over everything uncertain:** every combination of uncertain input values (Unknown
+   → declared bounds, Range → the range, Exact → one value; max 5,000 combinations) × every
+   stress case. Pass for all → `ROBUST_CONCLUSION`; fail anywhere → `FRAGILE_PLAN` (nominal
+   plan passes) or `LIQUIDITY_BREACH` (nominal fails), severity CRITICAL if cash goes negative.
+   If some values pass and others fail, the headline uses `.depends_on_input` and the
+   limitation `limitation.depends_on_unknown_input` — never a flat "will".
+2. **Question:** `rankUnknowns` over uncertain inputs (others held at the worst-case values);
+   the first one that flips the verdict and was not asked before becomes `followUp`.
+   "I'm not sure" keeps it Unknown and it is not asked again.
+3. **Repair:** for each start month, the smallest CHF-grid cut ≤ cap that passes for **every**
+   tested input value and stress case (search starts at the worst combination's own minimum,
+   which is a valid lower bound). Latest feasible start → `ACTION_DEADLINE`; none →
+   `NO_REPAIR_IN_SCOPE`.
+4. **Ranking:** tier (verdict → question-worthy unknowns → repair → deadline), then unseen before
+   seen, then severity, then id. The verdict is always primary, so "seen" never demotes a
+   safety finding.
+5. **Disclosures** (fictional, hypothetical, tested cases only, cash only, plus "unknown inputs
+   searched within bounds" when relevant) are attached to every `Briefing`, outside ranking.
 
 LLM boundary (later, optional): it may only turn a `Briefing`'s typed facts into sentences;
 it never adds numbers or claims. Without it the UI uses localized templates per key.

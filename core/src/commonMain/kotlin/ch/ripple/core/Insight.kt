@@ -93,4 +93,8 @@ data class Briefing(
     val actions: List<UserAction>,
     val moreInsights: List<FinancialInsight>,
     val disclosureKeys: List<String>,
+    /** Timelines referenced by scenarioIds: "baseline", "decision-nominal", "decision-worst", "decision-repaired". */
+    val scenarios: Map<String, SimulationResult>,
+    /** Full search evidence for the Inspect level. */
+    val evidence: BriefingEvidence,
 )

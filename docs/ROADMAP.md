@@ -40,10 +40,10 @@ Progressive disclosure: Insight → Explore → Inspect, never hiding uncertaint
 that results are hypothetical. Contract types are in `core/.../Insight.kt`.
 
 Essential:
-- [ ] (A) `InputState` (known / range / unknown + provenance) and `DecisionSession`.
+- [x] (A) `InputState` (known / range / unknown + provenance) and `DecisionSession`.
 - [ ] (A) Month-valued unknown, so "When will your first paycheck arrive?" can be modelled
       (`UnknownInput` is CHF-only today).
-- [ ] (A) `brief()` with the ranking rules in ARCHITECTURE.md; tests for each rule, incl.
+- [x] (A) `brief()` with the ranking rules in ARCHITECTURE.md; tests for each rule, incl.
       "disclosures always present" and "seen insights move down".
 - [ ] (B) Android guided flow: "What's on your mind?" → example housing story → one insight
       → one question (with "I'm not sure") → recompute → "Explore another option".

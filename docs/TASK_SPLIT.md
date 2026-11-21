@@ -34,21 +34,19 @@ matters (`Briefing`); the UI only renders it. Contract: `core/.../Insight.kt` + 
 ### Developer A — `core`
 
 Done (branch `core/break-my-plan`): Break My Plan engine, asset transfers, Alex demo data,
-contract types in `Insight.kt`. Next, in order:
-1. `InputState` (known / range / unknown + `Provenance`) and `DecisionSession` with
-   `answer(inputId, value)`; "I'm not sure" keeps the input `Unknown`, never a guessed value.
-2. Month-valued unknown (first paycheck month) next to the CHF one (deposit).
-3. `brief(session): Briefing` with the documented ranking rules; one test per rule.
-4. Facts with `evidenceRef` for every number (e.g. worst month, threshold `C4 = 2000 − deposit`).
-5. `SampleData.alexSession` so B can call `brief()` on real data from day one.
+`Insight.kt` contract, `brief()` / `answer()` / `markSeen()` with `InputState`
+(exact / range / unknown), `SampleData.alexSession`, facts with `evidenceRef`. Next:
+1. Month-valued unknown (first paycheck month) next to the CHF one (deposit).
+2. Calculation-step facts for Inspect (e.g. threshold formula `C4 = 2000 − deposit`).
+3. Speed: cache stress tests per input combination if `brief()` feels slow on Android.
 
 ### Developer B — `composeApp` / `androidApp`
 
-1. **Launch proof (JetBrains mandatory):** Android device/emulator + desktop screenshots in
-   `docs/evidence/`. (The `Pixel_10a` emulator did not boot here on 2026-11-21.)
-2. Guided screen against the `Briefing` types: headline, one question with "I'm not sure",
-   one action; until `brief()` lands, render a `Briefing` built from **real** `stressTest` /
-   `analyzeUnknown` results on `SampleData.alex*` (no typed-in numbers).
+1. **Launch proof:** Android ran on emulator `Pixel_10a_B` (M1 screen,
+   `docs/evidence/android-m1-emulator.png`); re-capture Android + desktop with the new screen.
+2. Guided screen calling `brief(session)` directly (API: ARCHITECTURE.md → "API for
+   Developer B"): headline, one question with "I'm not sure", one action. Run `brief()` off
+   the UI thread (≈1 s on JVM for `alexSession`).
 3. Key → text templates (EN) for every `InsightType`, prompt and limitation key; disclosures
    always visible at level 1.
 4. Explore level: timeline from `SimulationResult.cashByMonth`, baseline vs. alternative,

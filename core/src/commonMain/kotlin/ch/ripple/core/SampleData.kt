@@ -62,6 +62,16 @@ object SampleData {
         scenarioFor = ::alexMove,
     )
 
+    /** Ready-to-use session for the guided UI: the deposit starts Unknown (searched over 1,300–1,700). */
+    val alexSession = DecisionSession(
+        profile = alex,
+        baseline = alexStay,
+        inputs = listOf(DecisionInput("deposit", "question.deposit", Chf.francs(1_300), Chf.francs(1_700), Chf.francs(1))),
+        stress = alexStress,
+        floor = alexFloor,
+        repairCap = alexRepairCap,
+    ) { v -> alexMove(v.getValue("deposit")) }
+
     val moveAbroad = Scenario(
         name = "Move abroad",
         phases = listOf(Phase(0, 120, Chf.francs(3_700), Chf.francs(2_900))),
