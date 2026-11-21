@@ -23,6 +23,7 @@ android {
 }
 
 dependencies {
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation(projects.composeApp)
     implementation(libs.androidx.activity.compose)
 }

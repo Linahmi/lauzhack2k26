@@ -25,11 +25,11 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun MicrophoneControl(
     listening: Boolean, processing: Boolean, available: Boolean, reduceMotion: Boolean,
-    speaking: Boolean = false, onClick: () -> Unit,
+    speaking: Boolean = false, audioLevel: Float? = null, actionLabel: String? = null, onClick: () -> Unit,
 ) {
     val red = MaterialTheme.colorScheme.primary
     val pulse = if ((listening || processing || speaking) && !reduceMotion) listeningPulse() else .35f
-    val label = when { listening -> "Stop listening"; processing -> "Processing"; !available -> "Microphone unavailable"; else -> "Start microphone" }
+    val label = actionLabel ?: when { listening -> "Stop listening"; processing -> "Processing"; !available -> "Microphone unavailable"; else -> "Start microphone" }
     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Box(Modifier.sizeIn(maxWidth = 284.dp, maxHeight = 284.dp).fillMaxWidth().aspectRatio(1f).clip(CircleShape)
@@ -46,7 +46,8 @@ fun MicrophoneControl(
                     androidx.compose.ui.geometry.Size(radius * 2, radius * 2), style = Stroke(2.dp.toPx(), cap = StrokeCap.Round))
                 val heights = listOf(18f, 32f, 48f, 34f, 20f)
                 heights.forEachIndexed { index, base ->
-                    val height = base.dp.toPx() * if (listening) (.65f + pulse * .55f) else 1f
+                    val height = base.dp.toPx() * if (audioLevel != null && (listening || speaking))
+                        (.35f + audioLevel.coerceIn(0f, 1f) * 1.5f) else if (listening) (.65f + pulse * .55f) else 1f
                     val x = center.x + (index - 2) * 11.dp.toPx()
                     drawLine(red, Offset(x, center.y - height / 2), Offset(x, center.y + height / 2), 5.dp.toPx(), StrokeCap.Round)
                 }

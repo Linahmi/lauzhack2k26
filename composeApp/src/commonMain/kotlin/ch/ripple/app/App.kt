@@ -16,6 +16,9 @@ import ch.ripple.app.assistant.TypedInputOnly
 import ch.ripple.app.assistant.SpeechOutput
 import ch.ripple.app.assistant.SilentOutput
 import ch.ripple.app.assistant.FinancialTwinController
+import ch.ripple.app.assistant.LiveConversation
+import ch.ripple.app.assistant.NoLiveVoice
+import ch.ripple.app.assistant.LiveCompanionScreen
 import ch.ripple.app.components.MotionPreference
 import ch.ripple.app.results.ComparisonScreen
 import ch.ripple.app.theme.RippleTheme
@@ -26,6 +29,7 @@ import ch.ripple.app.welcome.UbsDemoScreen
 fun App(
     speechInput: SpeechInput = TypedInputOnly,
     speechOutput: SpeechOutput = SilentOutput,
+    liveConversation: LiveConversation = NoLiveVoice,
     platformBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> },
 ) {
     var destination by rememberSaveable { mutableStateOf("welcome") }
@@ -53,8 +57,8 @@ fun App(
             }) {
             Column {
                 screens.SaveableStateProvider(destination) { when (destination) {
-                    "assistant" -> AssistantScreen(speechInput, reduceMotion, Modifier.weight(1f),
-                        speechOutput = speechOutput, twin = twin, onBack = back)
+                    "assistant" -> LiveCompanionScreen(liveConversation, speechInput, speechOutput, twin,
+                        reduceMotion, Modifier.weight(1f), onBack = back)
                     "ubs-demo" -> UbsDemoScreen(Modifier.weight(1f), onBack = back, onContinue = openAssistant)
                     "comparison" -> ComparisonScreen(Modifier.weight(1f), onBack = back, onAssistant = openAssistant)
                     else -> WelcomeScreen(Modifier.weight(1f), reduceMotion,
