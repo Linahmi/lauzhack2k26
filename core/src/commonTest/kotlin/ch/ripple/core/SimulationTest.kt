@@ -85,6 +85,8 @@ class SimulationTest {
             deficit.copy(oneOffCosts = listOf(OneOffCost(2, chf(1)))),
             deficit.copy(phases = listOf(Phase(0, 2, chf(-1), chf(1)))),
             deficit.copy(phases = listOf(Phase(0, 2, chf(1), chf(-1)))),
+            deficit.copy(phases = listOf(Phase(0, 2, chf(1), chf(1), chf(2)))),
+            deficit.copy(phases = listOf(Phase(0, 2, chf(1), chf(1), chf(-1)))),
         )
         bad.forEach { assertFailsWith<IllegalArgumentException> { simulate(twoMonths, it) } }
         assertFailsWith<IllegalArgumentException> { simulate(twoMonths.copy(horizonMonths = 0), deficit) }

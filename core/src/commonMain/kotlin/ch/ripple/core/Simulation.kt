@@ -18,6 +18,9 @@ fun simulate(profile: FinancialProfile, scenario: Scenario): SimulationResult {
         }
         require(!p.monthlyIncome.isNegative) { "monthlyIncome cannot be negative" }
         require(!p.monthlyExpenses.isNegative) { "monthlyExpenses cannot be negative" }
+        require(!p.monthlyCommitments.isNegative && p.monthlyCommitments <= p.monthlyExpenses) {
+            "monthlyCommitments must be between zero and monthlyExpenses"
+        }
         for (m in p.startMonth until p.endMonth) {
             require(phaseByMonth[m] == null) { "Overlapping phases at month $m" }
             phaseByMonth[m] = p
@@ -45,7 +48,7 @@ fun simulate(profile: FinancialProfile, scenario: Scenario): SimulationResult {
     val records = List(n) { m ->
         val p = phaseByMonth[m]!!
         val closing = cash + p.monthlyIncome - p.monthlyExpenses - oneOffByMonth[m] - transferByMonth[m]
-        MonthRecord(m, cash, p.monthlyIncome, p.monthlyExpenses, oneOffByMonth[m], closing, transferByMonth[m])
+        MonthRecord(m, cash, p.monthlyIncome, p.monthlyExpenses, oneOffByMonth[m], closing, transferByMonth[m], p.monthlyCommitments)
             .also { cash = closing }
     }
     return SimulationResult(scenario.name, profile.openingCash, records)

@@ -54,6 +54,23 @@ object SampleData {
         transfers = listOf(AssetTransfer(0, deposit, "Refundable rental deposit")),
     )
 
+    /** Same life decision, but the move and its cash effects begin later. */
+    fun alexMoveDelayed(deposit: Chf, startMonth: Int = 2): Scenario {
+        require(startMonth in 0 until alex.horizonMonths) { "move month outside horizon" }
+        return Scenario(
+            name = "Delay move until month ${startMonth + 1} (deposit ${deposit.format()})",
+            phases = buildList {
+                if (startMonth > 0) add(Phase(0, startMonth, Chf.francs(2_600), Chf.francs(2_000)))
+                add(Phase(startMonth, alex.horizonMonths, Chf.francs(2_600), Chf.francs(2_350)))
+            },
+            oneOffCosts = listOf(
+                OneOffCost(startMonth, Chf.francs(500), "Non-refundable moving fee"),
+                OneOffCost(3, Chf.francs(900), "Annual obligation"),
+            ),
+            transfers = listOf(AssetTransfer(startMonth, deposit, "Refundable rental deposit")),
+        )
+    }
+
     val alexDepositUnknown = UnknownInput(
         name = "Refundable rental deposit",
         low = Chf.francs(1_300),
@@ -70,9 +87,28 @@ object SampleData {
         stress = alexStress,
         floor = alexFloor,
         repairCap = alexRepairCap,
-        options = listOf(DecisionOption("stay", "option.stay") { alexStay }),
+        options = listOf(DecisionOption(
+            "stay", "option.stay", DecisionKind.STAY_CURRENT,
+            listOf("assumption.current_housing_costs"),
+            intention = "What would happen if I stayed where I am?",
+            category = "housing",
+        ) { alexStay }),
         decisionLabelKey = "option.move",
+        decisionKind = DecisionKind.MOVE_OUT,
+        decisionAssumptionKeys = listOf("assumption.move_now", "assumption.cash_only"),
+        decisionIntention = "What would happen to my finances if I moved out?",
+        decisionCategory = "housing",
     ) { v -> alexMove(v.getValue("deposit")) }
+
+    /** Alex demo with an additional explicit life-decision path: delay the move by two months. */
+    val alexEvolvingSession = alexSession.copy(
+        options = alexSession.options + DecisionOption(
+            "delay", "option.delay_move", DecisionKind.DELAY_DECISION,
+            listOf("assumption.delay_move_two_months"),
+            intention = "What would change if I delayed moving out by two months?",
+            category = "timing",
+        ) { v -> alexMoveDelayed(v.getValue("deposit")) },
+    )
 
     /** Demo script for the command layer (Break → Repair → Reject → Recompute → Compare → Explain). */
     val alexDemoScript = listOf(
@@ -122,8 +158,17 @@ object SampleData {
         stress = alexStress,
         floor = alexFloor,
         repairCap = alexRepairCap,
-        options = listOf(DecisionOption("stay", "option.stay") { alexStay }),
+        options = listOf(DecisionOption(
+            "stay", "option.stay", DecisionKind.STAY_CURRENT,
+            listOf("assumption.current_housing_costs"),
+            intention = "What would happen if I stayed where I am?",
+            category = "housing",
+        ) { alexStay }),
         decisionLabelKey = "option.move_lausanne",
+        decisionKind = DecisionKind.MOVE_OUT,
+        decisionAssumptionKeys = listOf("assumption.new_lease", "assumption.cash_only"),
+        decisionIntention = "What would happen to my finances if I moved to my own flat in Lausanne?",
+        decisionCategory = "housing",
         marketData = MarketData.vaudHousing,
     ) { v -> alexMoveLausanne(v.getValue("rent"), v.getValue("deposit")) }
 

@@ -29,6 +29,7 @@ sealed interface GraphChange {
 /** What a node concluded — small enough to list and diff; evidence via [DecisionGraph.briefing]. */
 data class NodeSummary(
     val status: NodeStatus,
+    val decision: LifeDecision,
     val primaryInsightId: String,
     val primaryHeadlineKey: String,
     val worstMinimumCash: Chf,
@@ -49,10 +50,59 @@ data class NodeSummary(
     val marketAssumptions: Map<String, String> = emptyMap(),
     /** Snapshot version this node was computed with (null: no market data). */
     val marketDataVersion: String? = null,
+    /** Confirmed obligations active in this state. */
+    val commitmentIds: List<String> = emptyList(),
 )
 
 /** An option offered in the previous state that the user's new constraints now rule out. */
 data class InvalidatedOffer(val action: ExpenseReduction, val conflicts: List<String>)
+
+enum class UpdateReason {
+    CONFIRMED_FACT_REPLACED_UNCERTAINTY,
+    CONFIRMED_FACT_REPLACED_ASSUMPTION,
+    CONFIRMED_FACT_UPDATED,
+    PERSONAL_CONSTRAINT_UPDATED,
+    LIFE_DECISION_EXPLORED,
+    WHAT_IF_EXPLORED,
+    MARKET_EVIDENCE_UPDATED,
+}
+
+/** A typed before/after fact; [replacedAssumptionRef] identifies what stopped driving the model. */
+data class FinancialStateChange(
+    val inputId: String,
+    val before: ExplanationFact,
+    val after: ExplanationFact,
+    val replacedAssumptionRef: String?,
+)
+
+data class OutcomeChange(
+    val statusBefore: NodeStatus,
+    val statusAfter: NodeStatus,
+    val worstMinimumCashBefore: Chf,
+    val worstMinimumCashAfter: Chf,
+    val worstMinimumCashDelta: Chf,
+    val offeredRepairBefore: ExpenseReduction?,
+    val offeredRepairAfter: ExpenseReduction?,
+    val financialRepairBefore: ExpenseReduction?,
+    val financialRepairAfter: ExpenseReduction?,
+    /** False means the new state passes without any Explorer repair. */
+    val repairStillNeeded: Boolean,
+    val previousOfferedRepairStillOffered: Boolean,
+)
+
+/** Frontend-ready causal account of one immutable twin update. */
+data class UpdateExplanation(
+    val reason: UpdateReason,
+    val hypothetical: Boolean,
+    val stateChanges: List<FinancialStateChange>,
+    val decisionBefore: LifeDecision,
+    val decisionAfter: LifeDecision,
+    val outcome: OutcomeChange,
+    val activeConstraints: PersonalConstraints,
+    val evidenceRefs: List<String>,
+    val disclosureKeys: List<String>,
+    val limitationKeys: List<String>,
+)
 
 data class DecisionNode(
     val id: String,
@@ -85,6 +135,7 @@ data class GraphUpdate(
     /** Summary field names that differ (e.g. "status", "offered_repair"). */
     val changed: List<String>,
     val briefing: Briefing,
+    val explanation: UpdateExplanation,
     /** Why it changed = [node].change. If the parent's offer is now excluded, which one and by what. */
     val invalidatedOffer: InvalidatedOffer? = null,
 )
@@ -146,7 +197,10 @@ internal fun DecisionGraph.addChild(fromId: String, change: GraphChange, session
     val invalidated = parent.summary.offeredRepair?.let { a ->
         session.constraints.excludes(a.startMonth, a.monthly).takeIf { it.isNotEmpty() }?.let { InvalidatedOffer(a, it) }
     }
-    return GraphUpdate(graph, child, parent.summary, child.summary, diff(parent.summary, child.summary), b, invalidated)
+    return GraphUpdate(
+        graph, child, parent.summary, child.summary, diff(parent.summary, child.summary), b,
+        explainUpdate(parent, child, b), invalidated,
+    )
 }
 
 internal fun summarize(s: DecisionSession, b: Briefing): NodeSummary {
@@ -160,6 +214,7 @@ internal fun summarize(s: DecisionSession, b: Briefing): NodeSummary {
             financial != null -> NodeStatus.ONLY_UNACCEPTABLE_REPAIRS
             else -> NodeStatus.NO_REPAIR_IN_SCOPE
         },
+        decision = s.activeDecision,
         primaryInsightId = b.primary.id,
         primaryHeadlineKey = b.primary.headlineKey,
         worstMinimumCash = b.evidence.worstStressTest.worstMinimumCash,
@@ -173,11 +228,13 @@ internal fun summarize(s: DecisionSession, b: Briefing): NodeSummary {
         plannedCutConflicts = s.plannedCut?.let { s.constraints.excludes(it.startMonth, it.monthly) }.orEmpty(),
         marketAssumptions = s.marketAssumptions,
         marketDataVersion = s.marketData?.version,
+        commitmentIds = s.constraints.commitments.map { it.id },
     )
 }
 
 private fun diff(a: NodeSummary, b: NodeSummary) = listOfNotNull(
     "status".takeIf { a.status != b.status },
+    "life_decision".takeIf { a.decision != b.decision },
     "primary_insight".takeIf { a.primaryHeadlineKey != b.primaryHeadlineKey },
     "worst_min_cash".takeIf { a.worstMinimumCash != b.worstMinimumCash },
     "cash_buffer".takeIf { a.cashBuffer != b.cashBuffer },
@@ -190,7 +247,66 @@ private fun diff(a: NodeSummary, b: NodeSummary) = listOfNotNull(
     "planned_cut_conflicts".takeIf { a.plannedCutConflicts != b.plannedCutConflicts },
     "market_assumptions".takeIf { a.marketAssumptions != b.marketAssumptions },
     "market_data_version".takeIf { a.marketDataVersion != b.marketDataVersion },
+    "commitments".takeIf { a.commitmentIds != b.commitmentIds },
 )
+
+private fun explainUpdate(parent: DecisionNode, child: DecisionNode, briefing: Briefing): UpdateExplanation {
+    val stateChanges = when (val change = child.change) {
+        is GraphChange.Corrected -> (change.correction as? Correction.AnswerInput)?.let { answer ->
+            val input = parent.session.inputs.first { it.id == answer.inputId }
+            val before = parent.session.effectiveInputFact(input)
+            val after = child.session.effectiveInputFact(input)
+            listOf(FinancialStateChange(
+                answer.inputId,
+                before,
+                after,
+                before.evidenceRef.takeIf { before.provenance !in setOf(Provenance.USER_STATED, Provenance.COMPUTED) },
+            ))
+        }.orEmpty()
+        else -> emptyList()
+    }
+    val reason = when (val change = child.change) {
+        is GraphChange.Corrected -> when (change.correction) {
+            is Correction.AnswerInput -> when (stateChanges.single().before.provenance) {
+                Provenance.ASSUMED, Provenance.EXTERNAL_SOURCE -> UpdateReason.CONFIRMED_FACT_REPLACED_ASSUMPTION
+                Provenance.UNKNOWN, Provenance.USER_ESTIMATE_RANGE -> UpdateReason.CONFIRMED_FACT_REPLACED_UNCERTAINTY
+                else -> UpdateReason.CONFIRMED_FACT_UPDATED
+            }
+            else -> UpdateReason.PERSONAL_CONSTRAINT_UPDATED
+        }
+        is GraphChange.Explored -> if (change.hypothesis is Hypothesis.TryOption) {
+            UpdateReason.LIFE_DECISION_EXPLORED
+        } else UpdateReason.WHAT_IF_EXPLORED
+        is GraphChange.MarketDataUpdated -> UpdateReason.MARKET_EVIDENCE_UPDATED
+        GraphChange.Start -> error("start is not an update")
+    }
+    val before = parent.summary
+    val after = child.summary
+    return UpdateExplanation(
+        reason = reason,
+        hypothetical = child.hypothetical,
+        stateChanges = stateChanges,
+        decisionBefore = before.decision,
+        decisionAfter = after.decision,
+        outcome = OutcomeChange(
+            before.status,
+            after.status,
+            before.worstMinimumCash,
+            after.worstMinimumCash,
+            after.worstMinimumCash - before.worstMinimumCash,
+            before.offeredRepair,
+            after.offeredRepair,
+            before.financialRepair,
+            after.financialRepair,
+            repairStillNeeded = after.status != NodeStatus.PASSES,
+            previousOfferedRepairStillOffered = before.offeredRepair != null && before.offeredRepair == after.offeredRepair,
+        ),
+        activeConstraints = child.session.constraints,
+        evidenceRefs = briefing.primary.facts.mapNotNull { it.evidenceRef }.distinct(),
+        disclosureKeys = briefing.disclosureKeys,
+        limitationKeys = briefing.primary.limitationKeys,
+    )
+}
 
 private fun labelKey(c: GraphChange) = when (c) {
     GraphChange.Start -> "node.start"
@@ -201,6 +317,8 @@ private fun labelKey(c: GraphChange) = when (c) {
         is Correction.RejectRepair -> "node.reject_repair"
         Correction.ClearMaxMonthlyReduction, Correction.ClearMinCashBuffer -> "node.clear_constraint"
         is Correction.RemoveRejection -> "node.remove_rejection"
+        is Correction.SetCommitment -> "node.set_commitment"
+        is Correction.RemoveCommitment -> "node.remove_commitment"
         is Correction.RejectMarketEstimate -> "node.reject_market_estimate"
     }
     is GraphChange.Explored -> when (c.hypothesis) {

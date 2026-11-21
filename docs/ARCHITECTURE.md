@@ -25,7 +25,7 @@ and the APK is a thin separate module (the current JetBrains-recommended layout)
 Monthly time step, CHF, zero-indexed months, half-open phase intervals `[start, end)`.
 
 ```
-closing[m] = opening[m] + income[m] - expenses[m] - oneOffCosts[m]
+closing[m] = opening[m] + income[m] - expenses[m] - oneOffCosts[m] - restrictedTransfers[m]
 opening[m+1] = closing[m];  opening[0] = profile.openingCash
 ```
 
@@ -39,13 +39,18 @@ Outputs: per-month `MonthRecord` (reconciles opening → flows → closing), `cl
 never). Negative cash is kept as an **unfunded shortfall** — never clamped, never treated as
 an assumed loan.
 
+`Phase.monthlyCommitments` classifies the protected part of monthly expenses;
+`MonthRecord.adjustableExpenses` is the remainder. Explorer repairs may reduce only that
+remainder. Confirmed recurring obligations are `PersonalCommitment`s stored in the existing
+`PersonalConstraints` and applied to every decision path, including the baseline.
+
 Money is `Chf(rappen: Long)` so results are exact and identical on every platform.
 
 Asset transfers (e.g. a refundable deposit) lower cash but are not costs:
 `SimulationResult.restrictedAssets` tracks them and `closingNetWorth = cash + restricted`
 (no liabilities modelled).
 
-Deliberately not modelled yet: taxes, investments, debt, inflation, benefits.
+Deliberately not modelled yet: taxes, investments, debt, pensions, inflation, benefits.
 When transfers/assets/debt arrive, they must follow the UBS rules in
 [UBS_REFERENCE_NOTES.md](UBS_REFERENCE_NOTES.md) (transfers are not expenses, principal vs
 interest, cash ≠ net worth).
@@ -219,6 +224,58 @@ New UI keys: `insight.no_acceptable_repair`; facts `financial_min_reduction`,
 node labels `node.start`, `node.answer_input`, `node.set_max_reduction`, `node.set_cash_buffer`,
 `node.reject_repair`, `node.clear_constraint`, `node.remove_rejection`, `node.what_if_input`,
 `node.try_option`; option `option.stay`; constraint id `constraint.max_monthly_reduction`.
+
+#### Evolving-twin additions
+
+Life decisions start with a free-form intention and an optional open category. They are not
+gated by an enum. `DecisionKind` remains only as a backward-compatible research hint; custom
+decisions use `OTHER` and do not require a new variant.
+
+```kotlin
+LifeDecision(optionId, kind, labelKey, assumptionKeys, intention, category?, coverage)
+DecisionOption(id, labelKey, kind = OTHER, assumptionKeys, intention, category?, coverage) {
+    values -> Scenario(...)
+}
+```
+
+`NodeSummary.decision` makes the selected life decision part of history and branch comparisons.
+`SampleData.alexEvolvingSession` adds a two-month delayed-move path using the same `Phase`,
+`OneOffCost` and `AssetTransfer` primitives.
+
+Any intention is translated into the same small set of financial changes:
+
+```kotlin
+FinancialConsequences(
+    recurring: List<RecurringCashFlowChange>,       // signed income/expense delta + interval
+    oneOffCosts: List<OneOffCost>,                  // timing + provenance
+    restrictedAssetTransfers: List<AssetTransfer>, // timing + provenance; not consumption
+    protectedCommitments: List<PersonalCommitment>,
+)
+fun Scenario.withConsequences(horizonMonths, consequences): Scenario
+```
+
+These changes preserve labels, timing, duration, provenance and evidence references on the
+constructed `Scenario`; simulation still uses exact `Chf` arithmetic. Baseline comparisons answer
+“what changes?” A tested cash-buffer status describes only the declared scenarios and stress cases;
+it is not an affordability verdict or a recommendation.
+
+`ModelCoverage` declares the financial domains a question needs. Cash flow is supported. Pension,
+debt, tax and investment are retained as explicit unsupported domains and add
+`limitation.unmodeled_financial_domains` to the briefing. Ripple may still show the supported
+cash-flow slice, but must not present it as a complete analysis of those domains.
+
+Every `GraphUpdate` now includes `explanation: UpdateExplanation`: typed confirmed-input
+before/after facts, any replaced assumption reference, decision before/after, status and cash
+deltas, repairs before/after, whether a repair is still needed, active constraints, evidence
+references, disclosures and limitations. `hypothetical` remains explicit: a correction updates
+a confirmed fact; a `Hypothesis` opens a what-if branch and never overwrites the confirmed line.
+
+Recurring obligations use the existing correction path:
+
+```kotlin
+Correction.SetCommitment(PersonalCommitment(id, labelKey, monthly, startMonth, endMonth))
+Correction.RemoveCommitment(id)
+```
 
 ### Interactive twin loop (`TradeOffs.kt`, `Commands.kt`)
 

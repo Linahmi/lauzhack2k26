@@ -13,12 +13,17 @@ data class FinancialProfile(
     val fictional: Boolean = true,
 )
 
-/** A stretch of months with constant monthly income and living expenses. */
+/**
+ * A stretch of months with constant monthly income and living expenses.
+ * [monthlyCommitments] is the protected part of [monthlyExpenses] that an Explorer repair
+ * must never reduce (for example rent or confirmed family support).
+ */
 data class Phase(
     val startMonth: Int,
     val endMonth: Int,
     val monthlyIncome: Chf,
     val monthlyExpenses: Chf,
+    val monthlyCommitments: Chf = Chf.ZERO,
 )
 
 /** A single expense in one month (e.g. tuition, relocation). */
@@ -26,6 +31,8 @@ data class OneOffCost(
     val month: Int,
     val amount: Chf,
     val label: String = "",
+    val provenance: Provenance = Provenance.ASSUMED,
+    val evidenceRef: String? = null,
 )
 
 /**
@@ -36,6 +43,8 @@ data class AssetTransfer(
     val month: Int,
     val amount: Chf,
     val label: String = "",
+    val provenance: Provenance = Provenance.ASSUMED,
+    val evidenceRef: String? = null,
 )
 
 /** One decision path. Phases must cover every month of the horizon exactly once. */
@@ -44,6 +53,9 @@ data class Scenario(
     val phases: List<Phase>,
     val oneOffCosts: List<OneOffCost> = emptyList(),
     val transfers: List<AssetTransfer> = emptyList(),
+    /** Inspectable deltas used to construct this scenario, if it was assembled from primitives. */
+    val recurringChanges: List<RecurringCashFlowChange> = emptyList(),
+    val protectedCommitments: List<PersonalCommitment> = emptyList(),
 )
 
 /** Outputs. One reconciled row per month: closing = opening + income - expenses - oneOffCosts - transfers. */
@@ -55,8 +67,10 @@ data class MonthRecord(
     val oneOffCosts: Chf,
     val closingCash: Chf,
     val transfersToRestricted: Chf = Chf.ZERO,
+    val commitments: Chf = Chf.ZERO,
 ) {
     val netFlow: Chf get() = income - expenses - oneOffCosts - transfersToRestricted
+    val adjustableExpenses: Chf get() = expenses - commitments
 }
 
 data class SimulationResult(

@@ -17,17 +17,30 @@ package ch.ripple.core
  * Hypothesis.UseResearchedEstimate, i.e. an explicit user action that creates a graph branch.
  */
 
-enum class DecisionKind { MOVE_OUT, STUDY_VS_WORK, RELOCATION, JOB_CHANGE, START_FAMILY }
+/** Legacy research hints only; OTHER plus an open intention/category supports any life decision. */
+enum class DecisionKind {
+    MOVE_OUT, STUDY_VS_WORK, RELOCATION, JOB_CHANGE, START_FAMILY,
+    /** Explicit paths that need no separate research catalogue. */
+    DELAY_DECISION, STAY_CURRENT, OTHER,
+}
 
 /** What the user explicitly told us about the decision (nothing inferred). */
 data class DecisionContext(
-    val kind: DecisionKind,
+    val kind: DecisionKind = DecisionKind.OTHER,
     val location: GeoScope,
     /** Year the decision is evaluated in (supplied by the caller; core never reads a clock). */
     val asOfYear: Int,
     /** Dwelling the user described, for housing targets; null if not described. */
     val housing: HousingCharacteristics? = null,
-)
+    /** Free-form context survives even when [kind] is OTHER. */
+    val intention: String? = null,
+    val category: String? = kind.takeUnless { it == DecisionKind.OTHER }?.name?.lowercase(),
+) {
+    init {
+        require(intention == null || intention.isNotBlank()) { "decision intention cannot be blank" }
+        require(category == null || category.isNotBlank()) { "decision category cannot be blank" }
+    }
+}
 
 data class ResearchVariable(val category: MarketCategory, val unit: MarketUnit, val basis: AmountBasis = AmountBasis.NOT_STATED)
 
@@ -130,7 +143,7 @@ fun planResearch(context: DecisionContext, session: DecisionSession? = null, max
     }.sortedByDescending { r -> checks.first { it.inputId == r.inputId }.sensitivity.swing }
 
     val covered = linked.map { it.market!!.category }.toSet()
-    val heuristic = ResearchCatalog.targets.getValue(context.kind).filter { it.category !in covered }.map { v ->
+    val heuristic = ResearchCatalog.targets[context.kind].orEmpty().filter { it.category !in covered }.map { v ->
         ResearchRequest("${v.category.name.lowercase()}@${context.location.code}", context.kind,
             MarketQuery(v.category, v.unit, context.location, context.housing.takeIf { v.category in HOUSING_CATEGORIES }, context.asOfYear, basis = v.basis),
             null, PriorityBasis.HEURISTIC, null, emptyList())

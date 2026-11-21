@@ -95,6 +95,12 @@ fun Scenario.withExpenseReduction(horizonMonths: Int, r: ExpenseReduction): Scen
     adjusted(horizonMonths, expenseCut = { m -> if (m >= r.startMonth) r.monthly else Chf.ZERO })
         .copy(name = "$name, -${r.monthly.format()}/month from month ${r.startMonth + 1}")
 
+/** Adds confirmed obligations to expenses while marking them as unavailable to repairs. */
+fun Scenario.withCommitments(horizonMonths: Int, commitments: List<PersonalCommitment>): Scenario {
+    if (commitments.isEmpty()) return this
+    return withConsequences(horizonMonths, FinancialConsequences(protectedCommitments = commitments))
+}
+
 /**
  * Explorer search for one start month: tries 0, step, 2*step, ... <= cap in order, so the
  * first passing value is the smallest on that grid. [retest] is the passing plan's stress test.
@@ -122,9 +128,11 @@ fun findMinimalMonthlyRepair(
     require(startMonth in 0 until profile.horizonMonths) { "startMonth $startMonth outside horizon" }
     require(!cap.isNegative) { "cap cannot be negative" }
     require(step.rappen > 0) { "step must be positive" }
+    val validCap = minOf(cap, simulate(profile, scenario).months
+        .filter { it.month >= startMonth }.minOf { it.adjustableExpenses })
     var checked = 0
     var r = Chf.ZERO
-    while (r <= cap) {
+    while (r <= validCap) {
         checked++
         val plan = scenario.withExpenseReduction(profile.horizonMonths, ExpenseReduction(startMonth, r))
         val test = stressTest(profile, plan, stress, floor)
@@ -203,12 +211,27 @@ fun rankUnknowns(profile: FinancialProfile, unknowns: List<UnknownInput>, stress
         .sortedWith(compareByDescending<UnknownImpact> { it.changesDecision }.thenByDescending { it.swing })
 
 /** Rewrites phases month by month, subtracting the given income / expense cuts. Validation stays in simulate(). */
-private fun Scenario.adjusted(
+internal fun Scenario.adjusted(
     horizonMonths: Int,
     incomeCut: (Int) -> Chf = { Chf.ZERO },
     expenseCut: (Int) -> Chf = { Chf.ZERO },
+    incomeAdd: (Int) -> Chf = { Chf.ZERO },
+    expenseAdd: (Int) -> Chf = { Chf.ZERO },
+    commitmentAdd: (Int) -> Chf = { Chf.ZERO },
 ): Scenario = copy(phases = (0 until horizonMonths).mapNotNull { m ->
     phases.firstOrNull { m >= it.startMonth && m < it.endMonth }?.let {
-        Phase(m, m + 1, it.monthlyIncome - incomeCut(m), it.monthlyExpenses - expenseCut(m))
+        val cut = expenseCut(m)
+        require(!cut.isNegative && cut <= it.monthlyExpenses - it.monthlyCommitments) {
+            "expense reduction exceeds adjustable spending in month $m"
+        }
+        val added = commitmentAdd(m)
+        require(!added.isNegative) { "commitment cannot be negative" }
+        Phase(
+            m,
+            m + 1,
+            it.monthlyIncome + incomeAdd(m) - incomeCut(m),
+            it.monthlyExpenses + expenseAdd(m) + added - cut,
+            it.monthlyCommitments + added,
+        )
     }
 })

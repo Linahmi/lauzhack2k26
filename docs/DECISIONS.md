@@ -2,6 +2,45 @@
 
 One entry per substantial feature (see the challenge gate in [CLAUDE.md](../CLAUDE.md)).
 
+## 2026-11-21 — Open-ended “What happens if…?” decisions
+
+- **Problem and beneficiary:** closed life-event labels and yes/no affordability language can
+  turn a financial twin into a gatekeeper. People need to see consequences and trade-offs for
+  the life they describe, even when it does not fit a predefined category.
+- **UBS:** a free-form intention and optional category now survive on every decision branch.
+  Reusable, provenance-carrying income/expense changes, one-off costs, restricted assets,
+  timing, duration and protected commitments construct any cash-flow-supported scenario.
+  `ModelCoverage` names pension, debt, tax or investment gaps instead of overclaiming.
+- **IMC:** the engine explains change relative to the person's current path and own cash cushion;
+  a status reports tested consequences, not permission or a recommendation.
+- **JetBrains:** all new decision representation, calculations, limitations and tests are in
+  `core/commonMain`; no desktop or Android UI changed.
+- **Demo proof:** study abroad uses six-month income/expense changes plus relocation, deposit and
+  continuing family support. Early retirement shows its cash path while explicitly flagging the
+  missing pension, tax and investment analysis. Both use `DecisionKind.OTHER`.
+- **Feasibility:** additive fields preserve Alex and the existing graph. Two focused tests cover
+  construction, provenance, exact baseline deltas, open categories and incomplete coverage.
+  Cut: no tax, pension, debt or investment calculators and no natural-language parser.
+
+## 2026-11-21 — Explicit evolving-twin state and protected commitments
+
+- **Problem and beneficiary:** an opaque scenario builder looked like budgeting rather than a
+  twin, and Explorer could not distinguish a family obligation from adjustable spending.
+- **UBS:** decision branches now identify the life decision and assumptions; confirmed facts
+  replace bounded uncertainty without rewriting history; every update exposes calculated
+  before/after outcomes, evidence and limitations. Exact CHF accounting is unchanged.
+- **IMC:** a user can record recurring support or another essential obligation, and repair
+  searches protect it. The UI can explain that the constraint remains active even when new
+  information makes an earlier repair unnecessary.
+- **JetBrains:** all types, recalculation and explanations live in `core/commonMain`; the same
+  focused journey runs in JVM and Android host tests. No platform UI changed.
+- **Demo proof:** Alex rejects CHF 50/month, then confirms a CHF 1,450 deposit. Worst tested cash
+  changes from CHF 300 to CHF 550, the repair disappears, the rejection and old nodes remain,
+  and Move can be compared with Stay or a two-month delay.
+- **Feasibility:** additive core contract plus four focused tests. Reused `DecisionSession`,
+  `PersonalConstraints`, `Scenario`, `Correction`, `Hypothesis` and `DecisionGraph`; no new
+  finance domain, persistence layer or probability model.
+
 ## 2026-11-21 — Break My Plan engine (core)
 
 - **Problem and beneficiary:** a person without complete records or a precise budget can't
@@ -58,7 +97,7 @@ One entry per substantial feature (see the challenge gate in [CLAUDE.md](../CLAU
 - **Demo proof:** reject the CHF 50 cut → status changes, repair disappears, "works financially at
   CHF 50 but outside your limits" appears; switch to the "stay" branch and compare.
 - **Feasibility:** 11 new tests incl. a mutation check (ignoring constraints breaks 5 tests).
-  Cut: delaying the move is not modelled, so it is not offered.
+  A later evolving-twin addition now models and compares a two-month delay explicitly.
 
 ## 2026-11-21 — Interactive twin loop (trade-offs + safe command layer)
 

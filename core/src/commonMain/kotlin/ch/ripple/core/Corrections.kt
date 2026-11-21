@@ -29,11 +29,37 @@ data class Rejection(
     val reason: String? = null,
 )
 
+/** A confirmed recurring obligation added to every decision path and protected from repairs. */
+data class PersonalCommitment(
+    val id: String,
+    val labelKey: String,
+    val monthly: Chf,
+    val startMonth: Int = 0,
+    val endMonth: Int? = null,
+    val provenance: Provenance = Provenance.USER_STATED,
+    val evidenceRef: String? = null,
+) {
+    init {
+        require(id.isNotBlank() && labelKey.isNotBlank()) { "commitment id and labelKey cannot be blank" }
+        require(!monthly.isNegative) { "commitment cannot be negative" }
+        require(startMonth >= 0 && (endMonth == null || endMonth > startMonth)) { "invalid commitment interval" }
+    }
+
+    fun appliesIn(month: Int): Boolean = month >= startMonth && (endMonth == null || month < endMonth)
+
+    internal fun requireFits(horizonMonths: Int) {
+        require(startMonth < horizonMonths && (endMonth == null || endMonth <= horizonMonths)) {
+            "commitment outside horizon"
+        }
+    }
+}
+
 /** User-confirmed limits. Empty = no personal limits stated (the model's assumptions apply). */
 data class PersonalConstraints(
     val maxMonthlyReduction: Chf? = null,
     val minCashBuffer: Chf? = null,
     val rejections: List<Rejection> = emptyList(),
+    val commitments: List<PersonalCommitment> = emptyList(),
 ) {
     /** Ids of the constraints that rule out cutting [monthly]/month from [startMonth] (empty = allowed). */
     fun excludes(startMonth: Int, monthly: Chf): List<String> = listOfNotNull(
@@ -56,6 +82,9 @@ sealed interface Correction {
     data object ClearMaxMonthlyReduction : Correction
     data object ClearMinCashBuffer : Correction
     data class RemoveRejection(val rejectionId: String) : Correction
+    /** Add or replace a confirmed obligation with the same id. */
+    data class SetCommitment(val commitment: PersonalCommitment) : Correction
+    data class RemoveCommitment(val commitmentId: String) : Correction
     /** "This estimate doesn't apply to me": never offered again; any what-if using it is removed. */
     data class RejectMarketEstimate(val estimateId: String) : Correction
 }
@@ -98,6 +127,19 @@ fun DecisionSession.apply(c: Correction): DecisionSession = when (c) {
     is Correction.RemoveRejection -> {
         require(constraints.rejections.any { it.id == c.rejectionId }) { "no rejection '${c.rejectionId}'" }
         copy(constraints = constraints.copy(rejections = constraints.rejections.filterNot { it.id == c.rejectionId }))
+    }
+    is Correction.SetCommitment -> {
+        val commitment = c.commitment.copy(
+            provenance = Provenance.USER_STATED,
+            evidenceRef = c.commitment.evidenceRef ?: "commitment:${c.commitment.id}",
+        )
+        copy(constraints = constraints.copy(
+            commitments = constraints.commitments.filterNot { it.id == commitment.id } + commitment,
+        ))
+    }
+    is Correction.RemoveCommitment -> {
+        require(constraints.commitments.any { it.id == c.commitmentId }) { "no commitment '${c.commitmentId}'" }
+        copy(constraints = constraints.copy(commitments = constraints.commitments.filterNot { it.id == c.commitmentId }))
     }
     is Correction.RejectMarketEstimate -> {
         requireNotNull(marketData?.estimate(c.estimateId)) { "unknown market estimate '${c.estimateId}'" }

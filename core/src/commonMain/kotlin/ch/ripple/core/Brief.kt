@@ -68,6 +68,13 @@ data class DecisionSession(
     val plannedCut: ExpenseReduction? = null,
     /** Label of the main decision (e.g. "option.move"); alternatives carry their own. */
     val decisionLabelKey: String = "option.main",
+    /** Typed meaning and fixed assumption labels for the main life decision. */
+    val decisionKind: DecisionKind = DecisionKind.OTHER,
+    val decisionAssumptionKeys: List<String> = emptyList(),
+    /** User-facing free-form question; category is optional and never gates simulation. */
+    val decisionIntention: String = decisionLabelKey,
+    val decisionCategory: String? = decisionKind.takeUnless { it == DecisionKind.OTHER }?.name?.lowercase(),
+    val decisionCoverage: ModelCoverage = ModelCoverage(),
     /** Versioned market estimates available to this session (external context, never facts). */
     val marketData: MarketSnapshot? = null,
     /** inputId -> estimateId tried as a what-if; the value itself is in [hypotheticalValues]. */
@@ -79,10 +86,13 @@ data class DecisionSession(
 ) {
     init {
         require(inputs.map { it.id }.toSet().size == inputs.size) { "duplicate input ids" }
+        require(decisionIntention.isNotBlank()) { "decision intention cannot be blank" }
+        require(decisionCategory == null || decisionCategory.isNotBlank()) { "decision category cannot be blank" }
         require(values.keys.all { k -> inputs.any { it.id == k } }) { "values for undeclared inputs" }
         require(hypotheticalValues.keys.all { k -> inputs.any { it.id == k } }) { "what-if for undeclared inputs" }
         require(activeOptionId == null || options.any { it.id == activeOptionId }) { "unknown option '$activeOptionId'" }
         plannedCut?.let { require(it.startMonth in 0 until profile.horizonMonths && !it.monthly.isNegative) { "invalid planned cut" } }
+        constraints.commitments.forEach { it.requireFits(profile.horizonMonths) }
         marketAssumptions.forEach { (inputId, estimateId) ->
             val e = requireNotNull(marketData?.estimate(estimateId)) { "unknown market estimate '$estimateId'" }
             require(hypotheticalValues[inputId] == e.value.point) { "market what-if for '$inputId' must use the estimate's value" }
@@ -99,14 +109,54 @@ data class DecisionSession(
 
     fun scenarioFor(values: Map<String, Chf>): Scenario {
         val base = (options.firstOrNull { it.id == activeOptionId }?.build ?: decision)(values)
+            .withCommitments(profile.horizonMonths, constraints.commitments)
         return plannedCut?.let { base.withExpenseReduction(profile.horizonMonths, it) } ?: base
     }
 
+    fun baselineScenario(): Scenario = baseline.withCommitments(profile.horizonMonths, constraints.commitments)
+
     val activeLabelKey: String get() = options.firstOrNull { it.id == activeOptionId }?.labelKey ?: decisionLabelKey
+    val activeDecision: LifeDecision get() = options.firstOrNull { it.id == activeOptionId }?.let {
+        LifeDecision(it.id, it.kind, it.labelKey, it.assumptionKeys, it.intention, it.category, it.coverage)
+    } ?: LifeDecision(
+        null, decisionKind, decisionLabelKey, decisionAssumptionKeys,
+        decisionIntention, decisionCategory, decisionCoverage,
+    )
 }
 
-/** An alternative decision the model can evaluate with the same inputs (e.g. not moving). */
-class DecisionOption(val id: String, val labelKey: String, val build: (Map<String, Chf>) -> Scenario)
+/** Typed identity of the life decision represented by one branch. */
+data class LifeDecision(
+    val optionId: String?,
+    val kind: DecisionKind = DecisionKind.OTHER,
+    val labelKey: String,
+    val assumptionKeys: List<String> = emptyList(),
+    val intention: String = labelKey,
+    /** Open classification for discovery/analytics; not an engine switch. */
+    val category: String? = kind.takeUnless { it == DecisionKind.OTHER }?.name?.lowercase(),
+    val coverage: ModelCoverage = ModelCoverage(),
+) {
+    init {
+        require(intention.isNotBlank()) { "decision intention cannot be blank" }
+        require(category == null || category.isNotBlank()) { "decision category cannot be blank" }
+    }
+}
+
+/** An alternative decision the model can evaluate with the same inputs (e.g. stay or delay). */
+class DecisionOption(
+    val id: String,
+    val labelKey: String,
+    val kind: DecisionKind = DecisionKind.OTHER,
+    val assumptionKeys: List<String> = emptyList(),
+    val intention: String = labelKey,
+    val category: String? = kind.takeUnless { it == DecisionKind.OTHER }?.name?.lowercase(),
+    val coverage: ModelCoverage = ModelCoverage(),
+    val build: (Map<String, Chf>) -> Scenario,
+) {
+    init {
+        require(intention.isNotBlank()) { "decision intention cannot be blank" }
+        require(category == null || category.isNotBlank()) { "decision category cannot be blank" }
+    }
+}
 
 /** Record an answer ("I'm not sure" = InputState.Unknown). Recompute with brief(). */
 fun DecisionSession.answer(inputId: String, value: InputState): DecisionSession {
@@ -115,12 +165,13 @@ fun DecisionSession.answer(inputId: String, value: InputState): DecisionSession 
         require((value.high - value.low).rappen % input.step.rappen == 0L) { "range must be a whole number of ${input.step} steps" }
     }
     // The user's own value replaces a market what-if for this input (never the other way round).
+    val replacesAssumption = value !is InputState.Unknown && inputId in hypotheticalValues
     val replacedEstimate = marketAssumptions[inputId]?.takeIf { value !is InputState.Unknown }
     return copy(
         values = values + (inputId to value),
         askedInputIds = askedInputIds + inputId,
-        hypotheticalValues = if (replacedEstimate != null) hypotheticalValues - inputId else hypotheticalValues,
-        marketAssumptions = if (replacedEstimate != null) marketAssumptions - inputId else marketAssumptions,
+        hypotheticalValues = if (replacesAssumption) hypotheticalValues - inputId else hypotheticalValues,
+        marketAssumptions = if (replacesAssumption) marketAssumptions - inputId else marketAssumptions,
         marketReviews = replacedEstimate?.let { marketReviews + (it to MarketReview.REPLACED_BY_USER_VALUE) } ?: marketReviews,
     )
 }
@@ -178,6 +229,7 @@ object Keys {
     const val LIMIT_ACTION_SET = "limitation.repair_within_declared_action_only"
     const val LIMIT_NOT_ADVICE = "limitation.not_advice"
     const val LIMIT_QUESTION_HEURISTIC = "limitation.question_order_heuristic"
+    const val LIMIT_UNMODELED_DOMAINS = "limitation.unmodeled_financial_domains"
 }
 
 fun brief(session: DecisionSession): Briefing = with(session) {
@@ -216,7 +268,7 @@ fun brief(session: DecisionSession): Briefing = with(session) {
 
     // 4. Timelines for Explore.
     val scenarios = buildMap {
-        put("baseline", simulate(profile, baseline))
+        put("baseline", simulate(profile, baselineScenario()))
         put("decision-nominal", simulate(profile, decision(worstInputs)))
         put("decision-worst", worst.worst.result)
         firstRepair?.let { r ->
@@ -229,17 +281,14 @@ fun brief(session: DecisionSession): Briefing = with(session) {
     val marketChecks = inputs.mapNotNull { marketCheck(it, worstInputs) }
 
     val evidence = BriefingEvidence(worstInputs, combos.size, stress.cases(profile.horizonMonths).size, worst, allPass, nonePass, impacts, repairs)
-    val inputFacts = inputs.map { i ->
-        hypotheticalValues[i.id]?.let { v ->
-            marketAssumptions[i.id]?.let { ExplanationFact("input:${i.id}", FactValue.Money(v), Provenance.EXTERNAL_SOURCE, "market:$it") }
-                ?: ExplanationFact("input:${i.id}", FactValue.Money(v), Provenance.ASSUMED, "hypothesis:${i.id}")
-        }
-            ?: inputFact(i, state(i.id))
+    val commitmentFacts = constraints.commitments.map {
+        fact("commitment:${it.id}", FactValue.Money(it.monthly), it.evidenceRef ?: "commitment:${it.id}", it.provenance)
     }
+    val inputFacts = inputs.map(::effectiveInputFact) + commitmentFacts
     val floorProvenance = if (constraints.minCashBuffer != null) Provenance.USER_STATED else Provenance.ASSUMED
     val limitFacts = listOfNotNull(
         constraints.maxMonthlyReduction?.let { fact("max_acceptable_reduction", FactValue.Money(it), "constraint:max_monthly_reduction", Provenance.USER_STATED) },
-    )
+    ) + commitmentFacts
     val askableIds = impacts.filter { it.changesDecision && it.name !in askedInputIds }.map { it.name }
     val followUpInput = askableIds.firstOrNull()?.let { id -> inputs.first { it.id == id } }
 
@@ -356,8 +405,14 @@ fun brief(session: DecisionSession): Briefing = with(session) {
 
     // 6. Fixed ranking: tier, then unseen before seen, then severity, then id. The breach/robust
     //    verdict is always tier 0, so being "seen" never demotes a safety finding.
+    val coverageLimitations = listOfNotNull(
+        Keys.LIMIT_UNMODELED_DOMAINS.takeIf { activeDecision.coverage.unsupportedDomains.isNotEmpty() },
+    )
     val ranked = candidates.map { i ->
-        i.copy(rankReasons = i.rankReasons + if (i.id in seenInsightIds) RankReason.ALREADY_SEEN else RankReason.NOT_SEEN_YET)
+        i.copy(
+            limitationKeys = (i.limitationKeys + coverageLimitations).distinct(),
+            rankReasons = i.rankReasons + if (i.id in seenInsightIds) RankReason.ALREADY_SEEN else RankReason.NOT_SEEN_YET,
+        )
     }.sortedWith(compareBy<FinancialInsight>({ tier(it.type) }, { it.id in seenInsightIds }, { it.severity.ordinal }, { it.id }))
 
     Briefing(
@@ -408,6 +463,14 @@ internal fun inputFact(i: DecisionInput, s: InputState) = when (s) {
     InputState.Unknown -> ExplanationFact("input:${i.id}", FactValue.MoneyRange(i.low, i.high), s.provenance, "input:${i.id}")
 }
 
+/** The value currently driving calculations, including a clearly labelled what-if. */
+internal fun DecisionSession.effectiveInputFact(i: DecisionInput): ExplanationFact =
+    hypotheticalValues[i.id]?.let { value ->
+        marketAssumptions[i.id]?.let {
+            ExplanationFact("input:${i.id}", FactValue.Money(value), Provenance.EXTERNAL_SOURCE, "market:$it")
+        } ?: ExplanationFact("input:${i.id}", FactValue.Money(value), Provenance.ASSUMED, "hypothesis:${i.id}")
+    } ?: inputFact(i, state(i.id))
+
 private fun unknownFacts(u: UnknownImpact, s: DecisionSession) = listOfNotNull(
     inputFact(s.inputs.first { it.id == u.name }, s.state(u.name)),
     u.passesUpTo?.let { ExplanationFact("passes_up_to", FactValue.Money(it), Provenance.COMPUTED, "unknown:${u.name}") },
@@ -445,17 +508,21 @@ private fun repairAcrossAll(s: DecisionSession, profiles: List<StressProfile>, s
     if (r > s.repairCap.rappen) return RepairOption(start, null, gridCount(s.repairCap.rappen), null)
     val financial = Chf(r)
     // A cut larger than a month's expenses is not a valid scenario (simulate() rejects it).
-    val minExpenses = profiles.minOf { p -> p.nominal.months.filter { it.month >= start }.minOf { it.expenses } }
+    val minAdjustable = profiles.minOf { p ->
+        p.nominal.months.filter { it.month >= start }.minOf { it.adjustableExpenses }
+    }
+    if (financial > minAdjustable) {
+        return RepairOption(start, null, gridCount(minAdjustable.rappen), null)
+    }
+    val acceptableCap = minOf(s.repairCap, minAdjustable)
 
     var a = financial
-    while (a <= s.repairCap) {
+    while (a <= acceptableCap) {
         if (s.constraints.excludes(start, a).isEmpty()) {
-            require(a <= minExpenses) { "monthlyExpenses cannot be negative" }
             return RepairOption(start, a, gridCount(r), financial)
         }
         a += s.repairStep
     }
-    require(financial <= minExpenses) { "monthlyExpenses cannot be negative" }
     return RepairOption(start, null, gridCount(r), financial, s.constraints.excludes(start, financial))
 }
 

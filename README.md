@@ -1,12 +1,16 @@
 # Ripple
 
-A financial twin for exploring possible futures through three perspectives —
+**Ripple lets you explore how life's decisions could reshape your financial future—revealing
+consequences, uncertainties, and trade-offs without deciding for you.**
+
+It explores possible futures through three perspectives —
 **Guardian** (what could go wrong?), **Skeptic** (what are we assuming?) and
 **Explorer** (what else is possible?). Built for LauzHack 2026 (UBS AI Financial Twin,
 IMC Tech for Good, JetBrains Kotlin Multiplatform).
 
 > Don't predict the future. Make it explorable. All profiles are fictional and every
-> output is a conditional result of stated assumptions, not a forecast or advice.
+> output is a conditional result of stated assumptions, not a forecast, verdict, or advice.
+> A cash cushion is a personal comparison point—not Ripple's permission to make a decision.
 
 ## Status: Milestone 1 (foundation)
 
