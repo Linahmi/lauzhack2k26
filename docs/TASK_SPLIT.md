@@ -2,6 +2,7 @@
 
 | | Developer A — financial core | Developer B — UX & platforms |
 |---|---|---|
+| Who | Linahmi | teammate |
 | Owns | `core/**` | `composeApp/**`, `androidApp/**` |
 | Branch prefix | `core/…` | `ui/…` |
 | Tests | `core/src/commonTest` (`./gradlew :core:allTests`) | builds + manual smoke on desktop/Android |
@@ -37,13 +38,16 @@ fun explore(profile, baseline: Scenario, candidates: List<Scenario>): List<Scena
 
 ### Developer A — `core`
 
-1. **Guardian** `analyzeRisks`: shortfall months, months below a buffer, deepest shortfall,
-   funding gap (extra CHF needed to never go negative).
-2. **Intervention window**: latest month a given monthly saving can start and still avoid the
-   shortfall ("act before month X").
-3. **Skeptic** `analyzeSensitivity`: shift income / expenses / one-off costs ±10% one at a
+The basic simulator (`simulate`, `compare`) is **done** and mirrors the UBS starter kit —
+every team has that. Priority now is what makes Ripple different, in this order:
+
+1. **Intervention window** (our standout): latest month a given monthly saving can start and
+   still avoid the shortfall ("act before month X"); null if already too late.
+2. **Skeptic** `analyzeSensitivity`: shift income / expenses / one-off costs ±10% one at a
    time; report which assumption flips "shortfall vs. no shortfall" (robust vs.
    assumption-dependent conclusion).
+3. **Guardian** `analyzeRisks`: shortfall months, months below a buffer, deepest shortfall,
+   funding gap (extra CHF needed to never go negative).
 4. **Explorer** `explore`: rank candidate scenarios vs. baseline and drop the ones that break
    a constraint (e.g. cash < 0).
 5. **Tests for each**, checked against hand calculations on Alexia's master's scenario
