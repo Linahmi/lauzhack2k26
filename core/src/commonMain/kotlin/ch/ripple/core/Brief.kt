@@ -166,10 +166,13 @@ fun brief(session: DecisionSession): Briefing = with(session) {
         "$combinationCount input combinations exceed $MAX_VALUE_COMBINATIONS; use coarser steps or answer an input"
     }
     val combos = inputs.fold(listOf(emptyMap<String, Chf>())) { acc, i -> acc.flatMap { m -> grids.getValue(i.id).map { m + (i.id to it) } } }
-    val tests = combos.map { it to stressTest(profile, decision(it), stress, floor) }
-    val (worstInputs, worst) = tests.minBy { it.second.worstMinimumCash }
-    val allPass = tests.all { it.second.passes }
-    val nonePass = tests.none { it.second.passes }
+    // Exact per-month worst case for each combination (no per-case simulation), then the full
+    // 22-case stressTest only for the worst combination, whose witness the UI shows.
+    val profiles = combos.map { it to stressProfile(profile, decision(it), stress) }
+    val worstInputs = profiles.minBy { it.second.worstMinimum }.first
+    val worst = stressTest(profile, decision(worstInputs), stress, floor)
+    val allPass = profiles.all { it.second.worstMinimum >= floor }
+    val nonePass = profiles.none { it.second.worstMinimum >= floor }
 
     // 2. Skeptic: which uncertain input could change the verdict (others at the worst case).
     val uncertain = inputs.filter { grids.getValue(it.id).size > 1 }
@@ -180,7 +183,7 @@ fun brief(session: DecisionSession): Briefing = with(session) {
 
     // 3. Explorer: repairs that hold for every combination (exact minimum on the CHF grid).
     val repairs = if (allPass) emptyList() else (0 until profile.horizonMonths).map { start ->
-        repairAcrossAll(session, decision(worstInputs), combos.map(decision), start)
+        repairAcrossAll(session, profiles.map { it.second }, start)
     }
     val firstRepair = repairs.firstOrNull { it.feasible }
     val firstFinancialRepair = repairs.firstOrNull { it.financiallyFeasible }
@@ -359,33 +362,47 @@ private fun unknownFacts(u: UnknownImpact, s: DecisionSession) = listOfNotNull(
 )
 
 /**
- * For [start]: (1) the smallest monthly cut that passes the stress set for EVERY scenario
- * (financial minimum, action-space cap only), then (2) the smallest such cut the user's
- * personal constraints allow. Below the worst scenario's own minimum nothing can pass (it is
- * one of the scenarios), so both searches start there and check every candidate against all.
+ * For [start]: (1) the smallest monthly cut on the CHF grid that passes the stress set for EVERY
+ * combination (financial minimum, action-space cap only), then (2) the smallest such cut the
+ * user's personal constraints allow.
+ *
+ * Exact, no search: a cut r from [start] adds r × (t − start + 1) to month t in every stress
+ * case, so month t needs r ≥ (floor − worstByMonth[t]) / (t − start + 1), rounded up to the grid;
+ * months before [start] (and the opening balance) must already be at the floor. Cash only grows
+ * with r, so every larger grid value passes too — (2) is the first one no constraint excludes.
+ * [RepairOption.candidatesChecked] = grid values covered (0..answer), all smaller ones proven short.
  */
-private fun repairAcrossAll(s: DecisionSession, worstScenario: Scenario, all: List<Scenario>, start: Int): RepairOption {
+private fun repairAcrossAll(s: DecisionSession, profiles: List<StressProfile>, start: Int): RepairOption {
     val floor = s.effectiveFloor
-    fun passesAll(r: Chf) = all.all {
-        stressTest(s.profile, it.withExpenseReduction(s.profile.horizonMonths, ExpenseReduction(start, r)), s.stress, floor).passes
+    val step = s.repairStep.rappen
+    val gridCount = { r: Long -> (r / step + 1).toInt() }
+    var need = 0L
+    for (p in profiles) {
+        if (p.nominal.openingCash < floor) return RepairOption(start, null, gridCount(s.repairCap.rappen), null)
+        p.worstByMonth.forEachIndexed { t, w ->
+            if (w < floor) {
+                val months = t - start + 1
+                if (months <= 0) return RepairOption(start, null, gridCount(s.repairCap.rappen), null)
+                need = maxOf(need, ceilDiv((floor - w).rappen, months.toLong()))
+            }
+        }
     }
-    val first = findMinimalMonthlyRepair(s.profile, worstScenario, s.stress, floor, start, s.repairCap, s.repairStep)
-    var checked = first.candidatesChecked
-    var r = first.minimalMonthlyReduction ?: return RepairOption(start, null, checked, null)
-    var financial: Chf? = null
-    while (r <= s.repairCap) {
-        if (r != first.minimalMonthlyReduction) checked++
-        if (passesAll(r)) { financial = r; break }
-        r += s.repairStep
-    }
-    if (financial == null) return RepairOption(start, null, checked, null)
+    val r = ceilDiv(need, step) * step
+    if (r > s.repairCap.rappen) return RepairOption(start, null, gridCount(s.repairCap.rappen), null)
+    val financial = Chf(r)
+    // A cut larger than a month's expenses is not a valid scenario (simulate() rejects it).
+    val minExpenses = profiles.minOf { p -> p.nominal.months.filter { it.month >= start }.minOf { it.expenses } }
 
-    var a: Chf = financial
+    var a = financial
     while (a <= s.repairCap) {
-        if (s.constraints.excludes(start, a).isEmpty() && (a == financial || passesAll(a).also { checked++ })) {
-            return RepairOption(start, a, checked, financial)
+        if (s.constraints.excludes(start, a).isEmpty()) {
+            require(a <= minExpenses) { "monthlyExpenses cannot be negative" }
+            return RepairOption(start, a, gridCount(r), financial)
         }
         a += s.repairStep
     }
-    return RepairOption(start, null, checked, financial, s.constraints.excludes(start, financial))
+    require(financial <= minExpenses) { "monthlyExpenses cannot be negative" }
+    return RepairOption(start, null, gridCount(r), financial, s.constraints.excludes(start, financial))
 }
+
+private fun ceilDiv(x: Long, d: Long) = if (x <= 0) 0L else (x + d - 1) / d

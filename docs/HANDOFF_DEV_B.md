@@ -52,7 +52,7 @@ fun TwinScreen() {
     var pending by remember { mutableStateOf<TwinCommand.Correct?>(null) }
     val scope = rememberCoroutineScope()
 
-    LaunchedEffect(Unit) {                       // engine work off the UI thread (~<1 s per call)
+    LaunchedEffect(Unit) {                       // engine work off the UI thread (~10 ms warm, ~200 ms first call)
         val g = withContext(Dispatchers.Default) { startGraph(SampleData.alexSession) }
         graph = g
         briefing = withContext(Dispatchers.Default) { g.briefing() }

@@ -48,7 +48,7 @@ constraints + corrections + hypotheses + decision graph (`startGraph`, `correct`
    `docs/evidence/android-m1-emulator.png`); re-capture Android + desktop with the new screen.
 2. Guided screen calling `brief(session)` directly (API: ARCHITECTURE.md → "API for
    Developer B"): headline, one question with "I'm not sure", one action. Run `brief()` off
-   the UI thread (≈1 s on JVM for `alexSession`).
+   the UI thread (~10 ms warm, ~200 ms first call, measured on JVM and the Android emulator).
 3. Key → text templates (EN) for every `InsightType`, prompt and limitation key; disclosures
    always visible at level 1.
 4. Explore level: timeline from `SimulationResult.cashByMonth`, baseline vs. alternative,

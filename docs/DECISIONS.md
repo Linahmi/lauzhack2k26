@@ -74,3 +74,20 @@ One entry per substantial feature (see the challenge gate in [CLAUDE.md](../CLAU
   `TwinCommand` through the same gate. No LLM dependency added.
 - **Feasibility:** 9 new tests incl. a scripted end-to-end demo; mutation checks (dropping the
   confirmation gate or the planned cut) each fail 2 tests.
+
+## 2026-11-21 — Exact fast path for brief() (performance)
+
+- **Why:** measured on the Android emulator (ART), `brief()` with the deposit unknown took
+  0.8–3 s warm and up to ~10 s on the first call; too slow for a live demo.
+- **What:** stress only lowers income, so month t's worst case over all stress cases is
+  nominal[t] − reduction × min(k, t + 1), and a cut r from month s adds r × (t − s + 1). Both are
+  exact integer formulas, so brief() screens all input values and computes the minimal cut
+  directly, running the full 22-case stressTest only for the worst combination (the witness).
+- **Proof:** `FastPathEquivalenceTest` compares against the original brute force on 96
+  configurations (buffers, stress budgets 0–3, stay/move, planned cut, personal limit) and on
+  the UBS Alexia scenarios; an off-by-one in the formula is caught only by this test.
+- **Result (warm / first call):** JVM 97 → 8 ms / 455 → 229 ms; Android emulator ART
+  0.8–3.2 s → 12–13 ms / 1.4–9.9 s → 180–193 ms. Same answers, all 132 tests pass.
+- **Unchanged:** public `stressTest`, `findMinimalMonthlyRepair`, `findLatestFeasibleStart` keep
+  the brute-force algorithm (they are the reference). `RepairOption.candidatesChecked` now
+  counts grid values covered (all smaller values proven insufficient), same numbers as before.
