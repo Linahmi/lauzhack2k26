@@ -1,7 +1,7 @@
 package ch.ripple.core
 
 /*
- * Backend -> frontend contract (types only; ranking implemented next by Developer A).
+ * Backend -> frontend contract types. Produced by brief() in Brief.kt.
  *
  * The engine decides WHAT matters and WHY; the UI only chooses HOW to say it.
  * Text is never stored here: the UI maps *Key strings to localized copy and fills in typed
