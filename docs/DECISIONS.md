@@ -24,3 +24,22 @@ One entry per substantial feature (see the challenge gate in [CLAUDE.md](../CLAU
 - **Prior art (not our invention):** budgeted uncertainty (Bertsimas & Sim 2004), actionable
   recourse (Ustun et al. 2019), active feature acquisition (Li & Oliva 2021), time-aware
   recourse (De Toni et al. 2025). See RESEARCH_TO_IMPLEMENTATION.md.
+
+## 2026-11-21 — Guided insight layer (core contract + UX direction)
+
+- **Problem and beneficiary:** people with limited financial knowledge or incomplete records
+  are overwhelmed by dashboards and questionnaires; they need one finding they understand
+  and one question that actually matters.
+- **UBS:** no weakening of the engine. Every displayed number is an engine fact or a labelled
+  input (`Provenance`); full evidence stays reachable in the Inspect level. Ranking is
+  deterministic and rule-based, and each insight records its `RankReason`s.
+- **IMC:** low-literacy, low-information access: exact / range / "I'm not sure" answers, one
+  question at a time. Counsellor workflow remains a hypothesis (CHARITY_VALIDATION.md).
+- **JetBrains:** insight selection lives in `commonMain`, so Android and desktop show the same
+  primary insight; platforms differ only in how much they reveal on request.
+- **Demo proof:** housing story → one insight → one question → recompute → alternative.
+  Fallback: Inspect panel + `:core:allTests`.
+- **Feasibility:** types only now (no logic); `brief()` is Developer A's next task. Cut: the
+  perspective mixer, LLM wording, calendar month names, free-text extraction.
+- **Guardrail:** disclosures (fictional, hypothetical, tested cases only, cash only) are
+  outside the ranking and attached to every `Briefing`.

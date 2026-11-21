@@ -97,6 +97,48 @@ stress cases, the action's cap and CHF 1 grid, and the 6-month horizon. Not prob
 not forecasts, not advice. `rankUnknowns` is a heuristic, not proven-optimal question
 selection. Months are zero-based; UIs display `month + 1`.
 
+### Insight layer (UX contract — `core/.../Insight.kt`, types in place, logic next)
+
+Principle: maximum intelligence in the engine, minimum cognitive load in the UI. Guardian /
+Skeptic / Explorer are internal analyses, not personalities. The engine turns their
+evidence into **one** primary insight and at most **one** question; the UI only renders.
+
+| UX level | Shown | Comes from |
+|---|---|---|
+| 1 Insight | headline + one action, plus mandatory `disclosureKeys` / `limitationKeys` | `Briefing.primary`, `followUp`, `actions` |
+| 2 Explore | simple timeline, baseline vs. alternative, the event causing the difference, one adjustable input | `scenarioIds` → `SimulationResult`, `facts` |
+| 3 Inspect | all inputs with `Provenance`, bounds, calculation steps, witness, constraint checks, search scope | `facts.evidenceRef` → `StressTest` / `RepairSearch` / `UnknownImpact` / `MonthRecord` |
+
+Planned API (Developer A, next milestone):
+
+```kotlin
+sealed interface InputState { Known(value) ; Range(low, high) ; Unknown(low, high) }  // + Provenance
+data class DecisionSession(profile, baseline: Scenario, decision: (inputs) -> Scenario,
+                           inputs: Map<String, InputState>, stress, floor, repairCap,
+                           seenInsightIds: Set<String>)
+fun brief(session: DecisionSession): Briefing                 // pure, deterministic
+fun DecisionSession.answer(inputId: String, value: InputState): DecisionSession  // "I'm not sure" = Unknown
+```
+
+`brief()` builds candidate insights from `stressTest`, `rankUnknowns`,
+`findMinimalMonthlyRepair` and `findLatestFeasibleStart`, then ranks them with fixed,
+documented rules (no ML, no LLM):
+
+1. A supported floor breach (`LIQUIDITY_BREACH` / `FRAGILE_PLAN`) is the primary insight —
+   unless an unknown can flip it, in which case it stays primary but is worded
+   "could" and the unknown becomes the `followUp`.
+2. Otherwise `ROBUST_CONCLUSION` (reassuring) is primary.
+3. `followUp` = highest-ranked `DECISION_CHANGING_UNKNOWN` (flips first, then swing),
+   skipped if already answered or answered "unsure" with no new information.
+4. Actions: `FEASIBLE_REPAIR` / alternative scenario first, then `ACTION_DEADLINE`;
+   `NO_REPAIR_IN_SCOPE` is stated, never hidden.
+5. Tie-breaks: unseen before seen, then severity, then insight id (stable ordering).
+6. `disclosureKeys` (fictional, hypothetical, tested cases only, cash only) are attached to
+   every `Briefing` and are never subject to ranking.
+
+LLM boundary (later, optional): it may only turn a `Briefing`'s typed facts into sentences;
+it never adds numbers or claims. Without it the UI uses localized templates per key.
+
 Change rules: additive changes to `core` are free; renaming/removing a public type needs a
 heads-up to the UI developer. The perspective mixer may only reorder/prioritise analyses —
 it never alters computed numbers.

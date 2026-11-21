@@ -25,30 +25,40 @@ Spec: [BREAK_MY_PLAN_NEXT_MILESTONE.md](BREAK_MY_PLAN_NEXT_MILESTONE.md),
 [RESEARCH_TO_IMPLEMENTATION.md](RESEARCH_TO_IMPLEMENTATION.md). Frozen public API:
 [ARCHITECTURE.md](ARCHITECTURE.md#break-my-plan-m2-frozen-for-the-ui--corebreakmyplankt).
 
-### Developer A — `core` (engine done on branch `core/break-my-plan`)
+### Next: M2b — Guided insight (see ROADMAP.md)
 
-Done: `stressTest`, `findMinimalMonthlyRepair`, `findLatestFeasibleStart`, `analyzeUnknown`,
-`rankUnknowns`, asset transfers / restricted assets, Alex demo data, 18 new tests (incl.
-fixture JSON test). Next:
-1. Input provenance on every value (`user-stated`, `assumed`, `unknown`, `computed`,
-   `external-source`) — needed for the M3 inspector and UBS transparency.
-2. A small `explain` model per result: the formula and input IDs behind each number
-   (e.g. `C4 = 2000 − deposit`), so the UI never rebuilds explanations itself.
-3. Generic unknown builders (income level, expense level, one-off amount) so Skeptic works
-   beyond the deposit example.
-4. Fixture JSON → `Scenario` loader in common code if B needs it for session import (M4).
+UX rule: one insight, one question, details only on request. The engine decides what
+matters (`Briefing`); the UI only renders it. Contract: `core/.../Insight.kt` + the
+"Insight layer" section of ARCHITECTURE.md.
+
+### Developer A — `core`
+
+Done (branch `core/break-my-plan`): Break My Plan engine, asset transfers, Alex demo data,
+contract types in `Insight.kt`. Next, in order:
+1. `InputState` (known / range / unknown + `Provenance`) and `DecisionSession` with
+   `answer(inputId, value)`; "I'm not sure" keeps the input `Unknown`, never a guessed value.
+2. Month-valued unknown (first paycheck month) next to the CHF one (deposit).
+3. `brief(session): Briefing` with the documented ranking rules; one test per rule.
+4. Facts with `evidenceRef` for every number (e.g. worst month, threshold `C4 = 2000 − deposit`).
+5. `SampleData.alexSession` so B can call `brief()` on real data from day one.
 
 ### Developer B — `composeApp` / `androidApp`
 
-1. **Launch proof (JetBrains mandatory):** run on Android (device or emulator) and desktop;
-   screenshots in `docs/evidence/`. The `Pixel_10a` emulator did not boot here on 2026-11-21.
-2. Minimal Break My Plan screen using `SampleData.alex*` and the real functions:
-   nominal trace vs. stress witness; deposit unknown with its CHF 1,500 threshold; repair
-   amount + latest start table; each result expandable to its inputs and monthly records.
-3. Desktop: side-by-side timeline (nominal / witness / repaired), floor line at CHF 500.
-4. Labels everywhere: fictional, net income, month-end cash, "within the tested cases only".
-5. No arithmetic in Composables — only display fields from `StressTest`, `RepairSearch`,
-   `StartWindow`, `UnknownImpact`.
+1. **Launch proof (JetBrains mandatory):** Android device/emulator + desktop screenshots in
+   `docs/evidence/`. (The `Pixel_10a` emulator did not boot here on 2026-11-21.)
+2. Guided screen against the `Briefing` types: headline, one question with "I'm not sure",
+   one action; until `brief()` lands, render a `Briefing` built from **real** `stressTest` /
+   `analyzeUnknown` results on `SampleData.alex*` (no typed-in numbers).
+3. Key → text templates (EN) for every `InsightType`, prompt and limitation key; disclosures
+   always visible at level 1.
+4. Explore level: timeline from `SimulationResult.cashByMonth`, baseline vs. alternative,
+   floor line. Inspect level (desktop first): inputs with provenance, witness, search scope.
+5. No arithmetic in Composables — only display engine fields.
+
+### Integration checkpoint
+
+`brief(SampleData.alexSession)` renders on Android and desktop; answering the question
+recomputes and changes the insight; Inspect shows the witness months behind the headline.
 
 ## After M2
 

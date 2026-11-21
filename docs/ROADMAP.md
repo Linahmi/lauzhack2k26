@@ -33,6 +33,26 @@ Acceptance:
 - [ ] Android runtime proof (emulator failed to boot 2026-11-21).
 - [ ] Explanation model (formula + input IDs per result) for the inspector (Developer A).
 
+## M2b — Guided insight (NEXT milestone)
+
+UX principle: the user sees one useful insight; the engine knows exactly why it matters.
+Progressive disclosure: Insight → Explore → Inspect, never hiding uncertainty or the fact
+that results are hypothetical. Contract types are in `core/.../Insight.kt`.
+
+Essential:
+- [ ] (A) `InputState` (known / range / unknown + provenance) and `DecisionSession`.
+- [ ] (A) Month-valued unknown, so "When will your first paycheck arrive?" can be modelled
+      (`UnknownInput` is CHF-only today).
+- [ ] (A) `brief()` with the ranking rules in ARCHITECTURE.md; tests for each rule, incl.
+      "disclosures always present" and "seen insights move down".
+- [ ] (B) Android guided flow: "What's on your mind?" → example housing story → one insight
+      → one question (with "I'm not sure") → recompute → "Explore another option".
+- [ ] (B) Desktop: same flow + simple comparison chart + expandable Inspect panel.
+- [ ] (B) Localized templates for every `headlineKey` / `promptKey` / limitation key (EN first).
+
+Deferred: calendar month names ("April" needs a start date input), free-text extraction
+(use example stories + structured answers first), LLM wording, perspective mixer, voice.
+
 ## M3 — Accessible journey (main IMC + UBS-transparency milestone)
 
 - Input provenance on every value: `user-stated`, `assumed`, `unknown`, `computed`,
