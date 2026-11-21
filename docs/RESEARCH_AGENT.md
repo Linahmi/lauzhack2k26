@@ -29,7 +29,17 @@ The deterministic engine runs without the research service.
   - the confirmation boundary, graph provenance and `brief()` integration.
   Same code and tests on Android and JVM.
 - **`research-server/`:** the only place with an API key or web access. It runs the LLM and search, and fetches sources.
-- **Providers:**
+- **Default provider: free and local** (`RIPPLE_RESEARCH_LLM=ollama`, used automatically when no Anthropic key is set):
+  - **Model:** `qwen2.5:7b` (Apache 2.0) in [Ollama](https://ollama.com).
+    - About 4.7 GB on disk, and runs on CPU with 32 GB RAM; the 4 GB GPU accelerates part of it.
+    - Strong at French and German sources, and has a JSON output mode.
+    - `temperature 0`, fixed `seed`, 16k context.
+    - Use `RIPPLE_OLLAMA_MODEL=qwen2.5:3b` if 7B is too slow.
+  - **Search:** opendata.swiss's public CKAN API (`package_search`, no key), plus a short list of known official documents per
+    category (`LocalProposer.SEED_DOCUMENTS`). Only allowlisted XLSX/PDF/CSV downloads are used.
+  - **How it reads documents:** the model gets ONE fetched document at a time, trimmed to the titles, footnotes and lines that name
+    the requested area. It proposes findings. **It cannot choose a URL:** every finding is pinned to the document it was given.
+- **Optional hosted provider** (`RIPPLE_RESEARCH_LLM=anthropic`):
   - Anthropic Claude (`claude-opus-5-5`) through the official Java SDK `com.anthropic:anthropic-java:3.3.0`.
   - Anthropic's server-side `web_search_20260209` and `web_fetch_20260209` tools for search and retrieval. They are restricted with `allowed_domains` to the allowlist in `ResearchCatalog.sourceHosts`.
   - Effort is `high`. Server-side refusal fallback is enabled (`fallbacks: "default"`, beta `server-side-fallback-2026-07-01`).
@@ -106,16 +116,21 @@ and nothing is cached for them, so research for them only counts if live researc
 | Component | Needs internet | Secrets |
 |---|---|---|
 | Financial engine, `brief()`, graph, cached research | **no** | none |
-| `research-server` | yes: `api.anthropic.com`, plus the allowlisted source hosts | `ANTHROPIC_API_KEY` in the server's environment only |
+| `research-server` (local model) | yes: `ckan.opendata.swiss` and the allowlisted source hosts. The model itself runs offline in Ollama | none |
+| `research-server` (hosted, optional) | yes: `api.anthropic.com` and the allowlisted source hosts | `ANTHROPIC_API_KEY` in the server's environment only |
 | App → server | local network to the server | optional `RIPPLE_RESEARCH_TOKEN` (shared secret, not an LLM key) |
 
 Run it like this:
 
 ```
-ANTHROPIC_API_KEY=… ./gradlew :research-server:run        # http://127.0.0.1:8787  (GET /health)
+ollama pull qwen2.5:7b                                    # once (free, local; Ollama must be running)
+./gradlew :research-server:run                            # http://127.0.0.1:8787  (GET /health)
+# hosted alternative: RIPPLE_RESEARCH_LLM=anthropic ANTHROPIC_API_KEY=… ./gradlew :research-server:run
 ```
 
-Optional settings: `RIPPLE_RESEARCH_BIND` (default 127.0.0.1; a token is required for any other address), `RIPPLE_RESEARCH_PORT` (8787),
+The local setup needs no key at all. Internet is used only for opendata.swiss and the allowlisted source downloads; the model runs on this machine.
+
+Optional settings: `RIPPLE_RESEARCH_LLM` (`ollama` | `anthropic`), `RIPPLE_OLLAMA_URL` (http://127.0.0.1:11434), `RIPPLE_OLLAMA_MODEL` (qwen2.5:7b), `RIPPLE_RESEARCH_BIND` (default 127.0.0.1; a token is required for any other address), `RIPPLE_RESEARCH_PORT` (8787),
 `RIPPLE_RESEARCH_TOKEN`, `RIPPLE_RESEARCH_MAX_PER_HOUR` (20), `RIPPLE_RESEARCH_MODEL` (claude-opus-5-5).
 
 **Cost controls:**
@@ -186,6 +201,7 @@ The same flow through real HTTP (stand-in LLM, real server and client) is `Resea
 
 ## Limitations and open items
 
+- **Local model not yet run for real:** the local path is tested with a fake Ollama and with live opendata.swiss search, but a real Qwen run needs Ollama installed and the model pulled.
 - **Not yet run against Claude:** no API key was available while building, so the live Claude call (`claudeResearchEndToEnd`) has
   never run. Everything up to it is tested: the server, real HTTP, and real fetching and validation of live documents.
   `ClaudeProposer` compiles against the SDK, but its prompt and replies have not been seen in practice.

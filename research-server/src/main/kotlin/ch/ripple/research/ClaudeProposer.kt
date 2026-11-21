@@ -4,6 +4,7 @@ import ch.ripple.core.ProposedFinding
 import ch.ripple.core.ProviderFailure
 import ch.ripple.core.ResearchJson
 import ch.ripple.core.ResearchRequest
+import ch.ripple.core.SourceDocument
 import com.anthropic.client.AnthropicClient
 import com.anthropic.core.JsonValue
 import com.anthropic.errors.AnthropicServiceException
@@ -16,8 +17,11 @@ import com.anthropic.models.messages.WebSearchTool20260209
 /** Proposes findings for one request. Output is untrusted; core's validateFinding() decides. */
 interface FindingProposer {
     val name: String
-    fun propose(request: ResearchRequest): List<ProposedFinding>
+    fun propose(request: ResearchRequest): Proposal
 }
+
+/** Proposed findings, plus any cited documents the proposer already fetched itself (the service fetches the rest). */
+data class Proposal(val findings: List<ProposedFinding>, val documents: List<SourceDocument> = emptyList())
 
 class ProposerException(val reason: ProviderFailure, message: String? = null) : Exception(message)
 
@@ -34,7 +38,7 @@ class ClaudeProposer(
 ) : FindingProposer {
     override val name: String get() = "anthropic:$model+web_search+web_fetch"
 
-    override fun propose(request: ResearchRequest): List<ProposedFinding> {
+    override fun propose(request: ResearchRequest): Proposal {
         val hosts = request.preferredHosts
         val params = MessageCreateParams.builder()
             .model(model)
@@ -62,7 +66,7 @@ class ClaudeProposer(
         }
         val text = message.content().mapNotNull { it.text().orElse(null)?.text() }.joinToString("\n")
         return try {
-            ResearchJson.decodeFindings(text, request.id)
+            Proposal(ResearchJson.decodeFindings(text, request.id))
         } catch (e: Exception) {
             throw ProposerException(ProviderFailure.BAD_RESPONSE, "extractor reply was not the expected JSON")
         }

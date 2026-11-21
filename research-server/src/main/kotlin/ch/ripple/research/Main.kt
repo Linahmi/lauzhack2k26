@@ -36,9 +36,11 @@ class ResearchService(
         }
         if (!running.tryAcquire()) return ProviderResponse.Failure(ProviderFailure.RATE_LIMITED, "another research run is in progress")
         return try {
-            val findings = p.propose(request)
-            val documents = findings.mapNotNull { it.sourceUrl }.distinct().take(5).mapNotNull { url -> runCatching { fetch(url) }.getOrNull() }
-            ProviderResponse.Success(findings, documents, p.name)
+            val proposal = p.propose(request)
+            val have = proposal.documents.map { it.url }.toSet()
+            val fetched = proposal.findings.mapNotNull { it.sourceUrl }.distinct().filter { it !in have }.take(5)
+                .mapNotNull { url -> runCatching { fetch(url) }.getOrNull() }
+            ProviderResponse.Success(proposal.findings, proposal.documents + fetched, p.name)
         } catch (e: ProposerException) {
             ProviderResponse.Failure(e.reason, e.message)
         } catch (e: Exception) {
@@ -84,7 +86,10 @@ private fun HttpExchange.reply(code: Int, json: String) {
 
 /**
  * Configuration (environment only; never in the apps or the repository):
- *  ANTHROPIC_API_KEY        Claude API key (absent -> every request returns NOT_CONFIGURED; apps use the cache)
+ *  RIPPLE_RESEARCH_LLM      "ollama" (free, local) or "anthropic"; default: anthropic if ANTHROPIC_API_KEY is set, else ollama
+ *  RIPPLE_OLLAMA_URL        default http://127.0.0.1:11434
+ *  RIPPLE_OLLAMA_MODEL      default qwen2.5:7b
+ *  ANTHROPIC_API_KEY        Claude API key (only for RIPPLE_RESEARCH_LLM=anthropic)
  *  RIPPLE_RESEARCH_BIND     default 127.0.0.1 (use 0.0.0.0 only on a trusted network, with a token)
  *  RIPPLE_RESEARCH_PORT     default 8787
  *  RIPPLE_RESEARCH_TOKEN    optional shared secret expected in X-Ripple-Token
@@ -94,15 +99,20 @@ private fun HttpExchange.reply(code: Int, json: String) {
 fun main() {
     val env = System.getenv()
     val hasKey = !env["ANTHROPIC_API_KEY"].isNullOrBlank()
-    val proposer = if (hasKey) ClaudeProposer(
-        AnthropicOkHttpClient.builder().fromEnv().timeout(Duration.ofSeconds(150)).maxRetries(1).build(),
-        model = env["RIPPLE_RESEARCH_MODEL"] ?: "claude-opus-5-5",
-    ) else null
     val fetcher = SourceFetcher()
+    val llm = env["RIPPLE_RESEARCH_LLM"] ?: if (hasKey) "anthropic" else "ollama"
+    val proposer: FindingProposer? = when (llm) {
+        "anthropic" -> if (hasKey) ClaudeProposer(
+            AnthropicOkHttpClient.builder().fromEnv().timeout(Duration.ofSeconds(150)).maxRetries(1).build(),
+            model = env["RIPPLE_RESEARCH_MODEL"] ?: "claude-opus-5-5",
+        ) else null
+        "ollama" -> LocalProposer(fetcher::fetch, env["RIPPLE_OLLAMA_URL"] ?: "http://127.0.0.1:11434", env["RIPPLE_OLLAMA_MODEL"] ?: "qwen2.5:7b")
+        else -> error("RIPPLE_RESEARCH_LLM must be 'ollama' or 'anthropic'")
+    }
     val bind = env["RIPPLE_RESEARCH_BIND"] ?: "127.0.0.1"
     val port = env["RIPPLE_RESEARCH_PORT"]?.toInt() ?: 8787
     val token = env["RIPPLE_RESEARCH_TOKEN"]?.takeIf { it.isNotBlank() }
     require(bind == "127.0.0.1" || bind == "localhost" || token != null) { "set RIPPLE_RESEARCH_TOKEN when binding beyond localhost" }
-    startServer(ResearchService(proposer, fetcher::fetch, env["RIPPLE_RESEARCH_MAX_PER_HOUR"]?.toInt() ?: 20), bind, port, token, hasKey)
-    println("Ripple research proxy on http://$bind:$port (LLM ${if (hasKey) "configured" else "NOT configured: cache-only mode for clients"})")
+    startServer(ResearchService(proposer, fetcher::fetch, env["RIPPLE_RESEARCH_MAX_PER_HOUR"]?.toInt() ?: 20), bind, port, token, proposer != null)
+    println("Ripple research proxy on http://$bind:$port (${proposer?.name ?: "no LLM configured: clients use cached research"})")
 }

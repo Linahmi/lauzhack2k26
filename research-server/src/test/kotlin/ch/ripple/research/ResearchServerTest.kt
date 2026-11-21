@@ -29,7 +29,7 @@ class ResearchServerTest {
     /** Behaves like Claude citing the real FSO table; its document comes from the (stub) fetcher. */
     private val stubProposer = object : FindingProposer {
         override val name = "stub"
-        override fun propose(request: ResearchRequest) = listOf(ResearchCache.findings[0].copy(requestId = request.id))
+        override fun propose(request: ResearchRequest) = Proposal(listOf(ResearchCache.findings[0].copy(requestId = request.id)))
     }
     private val stubFetch = { url: String -> ResearchCache.documents.firstOrNull { it.url == url } }
 
@@ -46,7 +46,7 @@ class ResearchServerTest {
         assertEquals(ProviderFailure.RATE_LIMITED, (limited.handle(request) as ProviderResponse.Failure).reason)
         val refusing = object : FindingProposer {
             override val name = "stub"
-            override fun propose(request: ResearchRequest): List<ProposedFinding> = throw ProposerException(ProviderFailure.REFUSED)
+            override fun propose(request: ResearchRequest): Proposal = throw ProposerException(ProviderFailure.REFUSED)
         }
         assertEquals(ProviderFailure.REFUSED, (ResearchService(refusing, stubFetch).handle(request) as ProviderResponse.Failure).reason)
     }

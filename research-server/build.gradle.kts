@@ -11,6 +11,7 @@ dependencies {
     implementation(projects.core)          // shared types, wire format, validation
     implementation(libs.anthropic.java)    // official Anthropic Java SDK (Claude + server-side web tools)
     implementation(libs.pdfbox)            // text from fetched PDF sources
+    implementation(libs.kotlinx.serialization.json) // Ollama + opendata.swiss JSON
     testImplementation(kotlin("test"))
 }
 
