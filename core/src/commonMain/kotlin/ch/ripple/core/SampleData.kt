@@ -127,6 +127,12 @@ object SampleData {
         marketData = MarketData.vaudHousing,
     ) { v -> alexMoveLausanne(v.getValue("rent"), v.getValue("deposit")) }
 
+    /** Same fictional decision with NO market data loaded: the research flow starts from scratch. */
+    val alexResearchSession = alexLausanneSession.copy(marketData = null)
+
+    /** What Alex explicitly told us: moving out, Lausanne, a 1-room flat on a new lease, deciding in 2026. */
+    val alexContext = DecisionContext(DecisionKind.MOVE_OUT, GeoScope.LAUSANNE, 2026, alexRentQuery.housing)
+
     val moveAbroad = Scenario(
         name = "Move abroad",
         phases = listOf(Phase(0, 120, Chf.francs(3_700), Chf.francs(2_900))),

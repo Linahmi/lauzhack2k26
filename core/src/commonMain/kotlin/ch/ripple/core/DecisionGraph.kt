@@ -208,6 +208,7 @@ private fun labelKey(c: GraphChange) = when (c) {
         is Hypothesis.TryOption -> "node.try_option"
         is Hypothesis.ApplyCut -> "node.apply_cut"
         is Hypothesis.UseMarketEstimate -> "node.use_market_estimate"
+        is Hypothesis.UseResearchedEstimate -> "node.use_researched_estimate"
     }
     is GraphChange.MarketDataUpdated -> "node.market_data_updated"
 }

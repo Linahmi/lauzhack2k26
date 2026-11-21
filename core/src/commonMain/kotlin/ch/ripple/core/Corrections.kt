@@ -69,6 +69,12 @@ sealed interface Hypothesis {
     data class ApplyCut(val cut: ExpenseReduction) : Hypothesis
     /** "Try this market assumption": the estimate's value for [inputId], labelled EXTERNAL_SOURCE. */
     data class UseMarketEstimate(val inputId: String, val estimateId: String) : Hypothesis
+    /**
+     * "Try this researched figure": a [FindingAssessment.estimate] that passed every validation check.
+     * The estimate (with source, quote and checks) is stored in this branch's snapshot, so the
+     * provenance stays with the node; earlier nodes are not touched.
+     */
+    data class UseResearchedEstimate(val inputId: String, val estimate: MarketEstimate) : Hypothesis
 }
 
 fun DecisionSession.apply(c: Correction): DecisionSession = when (c) {
@@ -112,6 +118,16 @@ fun DecisionSession.apply(h: Hypothesis): DecisionSession = when (h) {
     }
     is Hypothesis.TryOption -> copy(activeOptionId = h.optionId) // validated in DecisionSession.init
     is Hypothesis.ApplyCut -> copy(plannedCut = h.cut)           // validated in DecisionSession.init
+    is Hypothesis.UseResearchedEstimate -> {
+        val e = h.estimate
+        require(e.retrieval != RetrievalMode.CURATED_SNAPSHOT && e.checks.isNotEmpty() && e.checks.all { it.passed }) {
+            "only research findings that passed every validation check can be applied"
+        }
+        val base = marketData ?: MarketSnapshot("none", emptyList())
+        require(base.estimate(e.id).let { it == null || it == e }) { "a different estimate already uses id '${e.id}'" }
+        val snapshot = if (base.estimate(e.id) == null) MarketSnapshot("${base.version}+${e.id}", base.estimates + e) else base
+        copy(marketData = snapshot).apply(Hypothesis.UseMarketEstimate(h.inputId, e.id))
+    }
     is Hypothesis.UseMarketEstimate -> {
         val input = requireNotNull(inputs.firstOrNull { it.id == h.inputId }) { "unknown input '${h.inputId}'" }
         val query = requireNotNull(input.market) { "input '${h.inputId}' has no market link" }

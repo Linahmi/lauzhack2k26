@@ -108,3 +108,21 @@ One entry per substantial feature (see the challenge gate in [CLAUDE.md](../CLAU
   real lease: breaks above CHF 950" → enter CHF 1,050 → repairable. Fallback: `MarketTest.endToEndAlexLausanne`.
 - **Feasibility:** owner Developer A. No backend, no scraping, a static snapshot. Cut: salary and tax
   estimators, listing data, live updates. Open item: Statistique Vaud reuse terms (FSO figures are OPEN-BY).
+
+## 2026-11-21 — Reality Check research agent (core + research-server)
+
+- **Problem and beneficiary:** people deciding without complete figures (here: future rent)
+  can ask Ripple to look up credible public evidence instead of guessing.
+- **UBS:** external figures enter only as user-confirmed what-ifs, labelled `EXTERNAL_SOURCE`.
+  Every figure must pass deterministic validation against the retrieved source text. The engine
+  recomputes, and the graph keeps the evidence per branch. Cached research is disclosed as
+  cached. Details: RESEARCH_AGENT.md.
+- **IMC:** no bank data, no personal data sent (only category, area and year). It works offline
+  from the cache. This is a hypothesis until a nonprofit validates it.
+- **JetBrains:** planning, validation, fallback and the wire format are in `core/commonMain`
+  (tests on JVM and Android host). The key-holding proxy is a separate JVM module, and the APK
+  contains no SDK or key.
+- **Demo proof:** Alex: rent unknown → research (cached FSO 899 ± 16, verified) → try it →
+  passes → enter the real offer → repairable. Fallback: `ResearchTest.endToEndDecisionToUpdatedGraph`.
+- **Feasibility:** owner Developer A. One provider (Anthropic: LLM + web search/fetch). Cut:
+  multi-agent orchestration, crawling, more category models. Blocker: an API key is needed for the live Claude run.

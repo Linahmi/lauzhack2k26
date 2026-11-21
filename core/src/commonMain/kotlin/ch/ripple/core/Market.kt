@@ -11,9 +11,17 @@ package ch.ripple.core
  * Nothing here reads a clock, the network or a file: same snapshot + inputs -> same output.
  */
 
-enum class MarketCategory { HOUSING_NET_RENT }
+/** Financial variables external evidence can describe. A category is a research target, not a model. */
+enum class MarketCategory {
+    HOUSING_NET_RENT, HOUSING_UTILITIES, HOUSING_DEPOSIT,
+    TUITION_FEE, ENTRY_SALARY, SALARY,
+    HEALTH_INSURANCE_PREMIUM, COMMUTE_COST, CHILDCARE_FEE, FAMILY_ALLOWANCE,
+}
 
-enum class MarketUnit { CHF_PER_MONTH, CHF_PER_M2_PER_MONTH }
+enum class MarketUnit { CHF_PER_MONTH, CHF_PER_M2_PER_MONTH, CHF_PER_SEMESTER, CHF_PER_YEAR, CHF_ONE_OFF }
+
+/** Gross vs net, where the category has one (salaries: before/after deductions). NOT_STATED = no such distinction given. */
+enum class AmountBasis { GROSS, NET, NOT_STATED }
 
 enum class GeoLevel { COUNTRY, CANTON, MUNICIPALITY }
 
@@ -69,6 +77,8 @@ data class MarketValue(
 enum class EvidenceKind {
     /** A figure printed by an official statistics office. */
     OBSERVED_OFFICIAL_STATISTIC,
+    /** A figure published by a public institution or service provider (not a statistics office). */
+    PUBLISHED_FIGURE,
     /** A value chosen by the team (not observed). Never used for the shipped snapshot. */
     ASSUMPTION,
 }
@@ -99,16 +109,28 @@ data class MarketEstimate(
     val id: String,
     val category: MarketCategory,
     val scope: GeoScope,
-    val housing: HousingCharacteristics,
+    /** Dwelling characteristics for housing categories; null for other categories. */
+    val housing: HousingCharacteristics?,
     val value: MarketValue,
     val source: MarketSource,
     val observed: ObservationPeriod,
-    /** ISO date the team retrieved and checked the figure. */
+    /** ISO date the figure was retrieved and checked. */
     val retrievedOn: String,
     val kind: EvidenceKind,
     /** Localization keys describing how the figure was produced and its limits. */
     val methodologyKeys: List<String>,
+    val basis: AmountBasis = AmountBasis.NOT_STATED,
+    /** How the figure got here: hand-curated, cached research, or a live research run. */
+    val retrieval: RetrievalMode = RetrievalMode.CURATED_SNAPSHOT,
+    /** Source passage that contains the figure (verified to occur in the retrieved document). */
+    val quote: String? = null,
+    /** Where in the source (table, row, page), as proposed by the extractor. */
+    val locator: String? = null,
+    /** Deterministic validation results; empty for the hand-curated snapshot (checked by a person). */
+    val checks: List<FindingCheck> = emptyList(),
 )
+
+enum class RetrievalMode { CURATED_SNAPSHOT, CACHED_RESEARCH, LIVE_RESEARCH }
 
 /** An immutable, versioned set of estimates. A new version is a new object, never a mutation. */
 data class MarketSnapshot(val version: String, val estimates: List<MarketEstimate>) {
@@ -121,22 +143,26 @@ data class MarketQuery(
     val category: MarketCategory,
     val unit: MarketUnit,
     val scope: GeoScope,
-    val housing: HousingCharacteristics,
+    /** Dwelling the input is about (housing categories only). */
+    val housing: HousingCharacteristics?,
     /** Year the decision is evaluated in, supplied by the caller (core never reads a clock). */
     val asOfYear: Int,
     /** Observations ending more than this many years before [asOfYear] are STALE. */
     val maxAgeYears: Int = 3,
+    /** Required gross/net basis; NOT_STATED = the category has none. */
+    val basis: AmountBasis = AmountBasis.NOT_STATED,
 )
 
 enum class ComparabilityIssue {
     // Hard: not a benchmark for this input at all (never offered, never compared).
-    DIFFERENT_CATEGORY, INCOMPATIBLE_UNIT, DIFFERENT_CHARGES_BASIS, DIFFERENT_SIZE, DIFFERENT_GEOGRAPHY,
+    DIFFERENT_CATEGORY, INCOMPATIBLE_UNIT, DIFFERENT_CHARGES_BASIS, DIFFERENT_AMOUNT_BASIS, DIFFERENT_SIZE, DIFFERENT_GEOGRAPHY,
     // Soft: shown as context with its caveat, but no mismatch may be claimed.
     BROADER_GEOGRAPHY, DIFFERENT_TENANCY_DURATION, STALE, NO_PUBLISHED_INTERVAL,
 }
 
 private val HARD_ISSUES = setOf(
     ComparabilityIssue.DIFFERENT_CATEGORY, ComparabilityIssue.INCOMPATIBLE_UNIT, ComparabilityIssue.DIFFERENT_CHARGES_BASIS,
+    ComparabilityIssue.DIFFERENT_AMOUNT_BASIS,
     ComparabilityIssue.DIFFERENT_SIZE, ComparabilityIssue.DIFFERENT_GEOGRAPHY,
 )
 
@@ -152,16 +178,18 @@ fun assess(query: MarketQuery, e: MarketEstimate): AssessedEstimate {
     val q = query.housing
     val h = e.housing
     val geoIndex = query.scope.chain.indexOf(e.scope)
-    val sizeMatches = q.rooms != null && h.rooms != null &&
-        (q.rooms == h.rooms || (h.roomsOrMore && q.rooms >= h.rooms))
+    // A housing query needs the estimate's dwelling definition; a non-housing query ignores it.
+    val sizeMatches = q == null || (h != null && ((q.rooms == null && h.rooms == null) ||
+        (q.rooms != null && h.rooms != null && (q.rooms == h.rooms || (h.roomsOrMore && q.rooms >= h.rooms)))))
     return AssessedEstimate(e, listOfNotNull(
         ComparabilityIssue.DIFFERENT_CATEGORY.takeIf { e.category != query.category },
         ComparabilityIssue.INCOMPATIBLE_UNIT.takeIf { e.value.unit != query.unit },
-        ComparabilityIssue.DIFFERENT_CHARGES_BASIS.takeIf { h.includesCharges != q.includesCharges },
-        ComparabilityIssue.DIFFERENT_SIZE.takeIf { !sizeMatches && !(q.rooms == null && h.rooms == null) },
+        ComparabilityIssue.DIFFERENT_CHARGES_BASIS.takeIf { q != null && h != null && h.includesCharges != q.includesCharges },
+        ComparabilityIssue.DIFFERENT_AMOUNT_BASIS.takeIf { query.basis != AmountBasis.NOT_STATED && e.basis != query.basis },
+        ComparabilityIssue.DIFFERENT_SIZE.takeIf { !sizeMatches },
         ComparabilityIssue.DIFFERENT_GEOGRAPHY.takeIf { geoIndex < 0 },
         ComparabilityIssue.BROADER_GEOGRAPHY.takeIf { geoIndex > 0 },
-        ComparabilityIssue.DIFFERENT_TENANCY_DURATION.takeIf { h.tenancy != q.tenancy },
+        ComparabilityIssue.DIFFERENT_TENANCY_DURATION.takeIf { q != null && h != null && h.tenancy != q.tenancy },
         ComparabilityIssue.STALE.takeIf { query.asOfYear - e.observed.endYear > query.maxAgeYears },
         ComparabilityIssue.NO_PUBLISHED_INTERVAL.takeIf { e.value.ciLow == null },
     ))
@@ -233,6 +261,7 @@ data class MarketRealityCheck(
 
 object MarketKeys {
     const val DISCLOSURE_MARKET_ASSUMPTION = "disclosure.market_estimate_is_not_your_value"
+    const val DISCLOSURE_CACHED_RESEARCH = "disclosure.cached_research_not_live_search"
     const val LIMIT_NOT_ABOUT_YOU = "limitation.market.population_statistic_not_about_you"
     const val LIMIT_AVERAGE_NOT_RANGE = "limitation.market.interval_is_for_the_average_not_individual_rents"
     const val LIMIT_CHARGES_EXCLUDED = "limitation.market.net_rent_excludes_charges"
@@ -316,7 +345,7 @@ internal fun DecisionSession.marketCheck(input: DecisionInput, worstInputs: Map<
         add(MarketKeys.LIMIT_NOT_ABOUT_YOU)
         if (top == null) add(MarketKeys.LIMIT_NO_DATA) else {
             add(MarketKeys.LIMIT_AVERAGE_NOT_RANGE)
-            if (!query.housing.includesCharges) add(MarketKeys.LIMIT_CHARGES_EXCLUDED)
+            if (query.housing?.includesCharges == false) add(MarketKeys.LIMIT_CHARGES_EXCLUDED)
             top.issues.mapNotNullTo(this) { it.limitationKey() }
             if (reference == null) add(MarketKeys.LIMIT_NO_COMPARABLE)
         }

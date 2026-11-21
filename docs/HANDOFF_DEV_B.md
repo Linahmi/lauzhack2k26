@@ -92,3 +92,9 @@ Demo phrases (same as `SampleData.alexDemoScript`): "Why does this plan fail?" �
 Read `briefing.marketChecks` / `graph.marketCheck("rent")`. Buttons map to `TwinCommand.ShowMarket`,
 `Hypothesis.UseMarketEstimate`, `Correction.AnswerInput` and `Correction.RejectMarketEstimate`.
 Full signatures, keys and display rules: `docs/MARKET_DATA.md`. `SampleData.alexSession` is unchanged.
+
+## Reality Check research (branch `core/research-agent`, stacked on `core/market-grounding`)
+
+`planResearch(SampleData.alexContext, session)` → `runResearch(request, provider, ResearchCache.snapshot)` →
+user taps "Use this figure" → `graph.explore(Hypothesis.UseResearchedEstimate(...))`. It works offline with
+`provider = null`. Signatures, display rules and the server setup are in `docs/RESEARCH_AGENT.md`.

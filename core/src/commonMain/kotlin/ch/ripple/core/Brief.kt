@@ -374,6 +374,9 @@ fun brief(session: DecisionSession): Briefing = with(session) {
             Keys.DISCLOSURE_UNKNOWN_BOUNDED.takeIf { uncertain.isNotEmpty() },
             Keys.DISCLOSURE_WHAT_IF.takeIf { isHypothetical },
             MarketKeys.DISCLOSURE_MARKET_ASSUMPTION.takeIf { marketAssumptions.isNotEmpty() },
+            MarketKeys.DISCLOSURE_CACHED_RESEARCH.takeIf {
+                marketAssumptions.values.any { marketData?.estimate(it)?.retrieval == RetrievalMode.CACHED_RESEARCH }
+            },
         ),
         scenarios = scenarios,
         evidence = evidence,

@@ -87,7 +87,7 @@ class MarketTest {
     }
 
     @Test fun staleDataIsFlaggedAndNeverClaimedAsAMismatch() {
-        val comparable = alexRentQuery.copy(housing = alexRentQuery.housing.copy(tenancy = TenancyDuration.ALL_DURATIONS))
+        val comparable = alexRentQuery.copy(housing = alexRentQuery.housing!!.copy(tenancy = TenancyDuration.ALL_DURATIONS))
         val fresh = sessionWith(comparable).answer("rent", InputState.Exact(chf(1_050)))
         assertEquals(MarketCheckStatus.ABOVE_AVERAGE_INTERVAL, check(fresh).status)
 
@@ -107,7 +107,7 @@ class MarketTest {
     }
 
     @Test fun comparablePositionsAreAgainstThePublishedIntervalOnly() {
-        val s = sessionWith(alexRentQuery.copy(housing = alexRentQuery.housing.copy(tenancy = TenancyDuration.ALL_DURATIONS)))
+        val s = sessionWith(alexRentQuery.copy(housing = alexRentQuery.housing!!.copy(tenancy = TenancyDuration.ALL_DURATIONS)))
         assertEquals(MarketCheckStatus.WITHIN_AVERAGE_INTERVAL, check(s.answer("rent", InputState.Exact(chf(900)))).status) // 883..915
         assertEquals(MarketCheckStatus.BELOW_AVERAGE_INTERVAL, check(s.answer("rent", InputState.Exact(chf(880)))).status)
         assertEquals(MarketCheckStatus.WITHIN_AVERAGE_INTERVAL, check(s.answer("rent", InputState.Range(chf(850), chf(890)))).status)
