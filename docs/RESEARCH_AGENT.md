@@ -201,7 +201,15 @@ The same flow through real HTTP (stand-in LLM, real server and client) is `Resea
 
 ## Limitations and open items
 
-- **Local model not yet run for real:** the local path is tested with a fake Ollama and with live opendata.swiss search, but a real Qwen run needs Ollama installed and the model pulled.
+- **Live local run (2026-11-21, Ollama 0.40.16, `qwen2.5:7b`, this laptop: i7-1360P, 32 GB, RTX A500 4 GB):**
+  - **The pipeline works end to end:** opendata.swiss found 15 official FSO tables, 3 documents were fetched and read, and it took **487 s**.
+  - **No figure was verified.** Both proposals were wrong and **both were rejected**:
+    - **CHF 1,369 "Lausanne, 1 room":** actually the *all-sizes total* column of the FSO row (1 room is 899). It was rejected because
+      the quote was not copied exactly, did not parse and had no tenancy, **not** because the column was wrong.
+    - **CHF 1,465 Vaud:** the all-sizes average, with no net/gross basis or tenancy stated. Rejected (`BASIS_DEFINED`, `HOUSING_DEFINED`).
+  - **Conclusion:** the local 7B model is too slow and too inaccurate at reading tables for the demo. Use the cached research, or Claude.
+    The column misread shows the table-cell limitation below is real: a model that copied the row exactly could have passed
+    with the wrong column.
 - **Not yet run against Claude:** no API key was available while building, so the live Claude call (`claudeResearchEndToEnd`) has
   never run. Everything up to it is tested: the server, real HTTP, and real fetching and validation of live documents.
   `ClaudeProposer` compiles against the SDK, but its prompt and replies have not been seen in practice.
