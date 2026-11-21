@@ -58,6 +58,7 @@ The deterministic engine runs without the research service.
 | `DOCUMENT_RETRIEVED` | the server fetched that URL itself (or the cache holds it) |
 | `QUOTE_IN_DOCUMENT` | the 8–500 character quote occurs in the retrieved text (whitespace, case and apostrophes normalized) |
 | `NUMBER_PARSES` / `VALUE_IN_QUOTE` / `INTERVAL_IN_QUOTE` | Swiss formats (`1'432`, `1’432`, `1 432`, `.–`). The value and any ± or bounds must appear in the quote. An inconsistent interval is rejected |
+| `TABLE_COLUMN_MATCHES` | spreadsheet rows only: the value must sit under a column header that matches the claim (for housing, the stated number of rooms, or "Total" for all sizes), never under a ± / interval header. A stated ± must be in the next column. The estimate's `locator` is then built from the document (row, column, header), not taken from the extractor |
 | `CURRENCY_CHF`, `UNIT_RECOGNIZED` | CHF only. Unit is one of per month, per m² per month, per semester, per year or one-off |
 | `BASIS_DEFINED` | housing must say net vs. charges. Categories that need it (salary) must say gross vs. net. A field claiming both is rejected |
 | `HOUSING_DEFINED` | tenancy type is stated (all tenancies vs. ≤ 1 year) |
@@ -208,13 +209,15 @@ The same flow through real HTTP (stand-in LLM, real server and client) is `Resea
       the quote was not copied exactly, did not parse and had no tenancy, **not** because the column was wrong.
     - **CHF 1,465 Vaud:** the all-sizes average, with no net/gross basis or tenancy stated. Rejected (`BASIS_DEFINED`, `HOUSING_DEFINED`).
   - **Conclusion:** the local 7B model is too slow and too inaccurate at reading tables for the demo. Use the cached research, or Claude.
-    The column misread shows the table-cell limitation below is real: a model that copied the row exactly could have passed
-    with the wrong column.
+    The column misread led to `TABLE_COLUMN_MATCHES`: that exact misread is now a test case and is rejected even with a perfectly copied row.
 - **Not yet run against Claude:** no API key was available while building, so the live Claude call (`claudeResearchEndToEnd`) has
   never run. Everything up to it is tested: the server, real HTTP, and real fetching and validation of live documents.
   `ClaudeProposer` compiles against the SDK, but its prompt and replies have not been seen in practice.
-- **Table cells:** for a table row, `VALUE_IN_QUOTE` proves the number is in the row, not which column it is.
-  The cached rows were checked by a person, and the column is in `locator`.
+- **Table cells:**
+  - **Spreadsheets:** columns are checked. Header rows are taken to be the rows above the value whose first cell is empty, which fits
+    the FSO and cantonal layout; other publishers' merged headers may need real merged-cell parsing.
+  - **PDF tables (no columns in the text):** still unchecked. In "1 pièce 716 13 896 15" a model could report the 2015 value (716)
+    as 2024, and validation would not catch it.
 - **Rights:** most allowlisted sources have unassessed terms (`CITATION_ONLY_TERMS_UNVERIFIED`). Only short quotes are stored.
 - **Other categories:** deposit practices, utilities, tuition and salaries are research targets only. There are no models or cached figures for them.
 - **Android:** live research on Android needs the transport copied to `androidMain` (Developer B), or the cache alone.

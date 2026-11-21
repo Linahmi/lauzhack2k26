@@ -83,7 +83,11 @@ internal fun htmlText(html: String): String = html
     .replace("&lt;", "<").replace("&gt;", ">").replace("&rsquo;", "’")
     .lines().map { it.replace(Regex("[ \t]+"), " ").trim() }.filter { it.isNotEmpty() }.joinToString("\n")
 
-/** XLSX -> one line per row, non-empty cells joined with " | " (same format as the cached snapshot). */
+/**
+ * XLSX -> one line per row, cells joined with " | " AT THEIR REAL COLUMN POSITION (gaps kept as
+ * empty cells, from the cell reference), so core can check which column header a value sits under.
+ * Same format as the cached snapshot.
+ */
 internal fun xlsxText(bytes: ByteArray): String {
     val entries = mutableMapOf<String, ByteArray>()
     ZipInputStream(ByteArrayInputStream(bytes)).use { z ->
@@ -104,18 +108,24 @@ internal fun xlsxText(bytes: ByteArray): String {
         val rows = xml(entries.getValue(name)).getElementsByTagName("row")
         (0 until rows.length).mapNotNull { r ->
             val cells = (rows.item(r) as Element).getElementsByTagName("c")
-            (0 until cells.length).mapNotNull { i ->
+            val byColumn = (0 until cells.length).mapIndexedNotNull { i, _ ->
                 val c = cells.item(i) as Element
                 val v = c.getElementsByTagName("v").item(0)?.textContent
-                when (c.getAttribute("t")) {
+                val text = when (c.getAttribute("t")) {
                     "s" -> v?.toIntOrNull()?.let { shared.getOrNull(it) }
                     "inlineStr" -> c.getElementsByTagName("t").item(0)?.textContent
                     else -> v?.let { s -> s.toDoubleOrNull()?.takeIf { it % 1.0 == 0.0 && kotlin.math.abs(it) < 1e15 }?.toLong()?.toString() ?: s }
-                }?.trim()?.takeIf { it.isNotEmpty() }
-            }.takeIf { it.isNotEmpty() }?.joinToString(" | ")
+                }?.replace(Regex("\\s+"), " ")?.trim()?.takeIf { it.isNotEmpty() } ?: return@mapIndexedNotNull null
+                (columnIndex(c.getAttribute("r")) ?: i) to text
+            }.toMap()
+            byColumn.keys.maxOrNull()?.let { last -> (0..last).joinToString(" | ") { byColumn[it].orEmpty() } }
         }
     }.joinToString("\n")
 }
+
+/** "D10" -> 3; null if there is no reference. */
+private fun columnIndex(ref: String): Int? =
+    ref.takeWhile { it.isLetter() }.uppercase().takeIf { it.isNotEmpty() }?.fold(0) { n, ch -> n * 26 + (ch - 'A' + 1) }?.minus(1)
 
 /** XML parser hardened against XXE (no DOCTYPE, no external entities). */
 private fun xml(bytes: ByteArray) = DocumentBuilderFactory.newInstance().apply {

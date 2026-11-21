@@ -160,6 +160,21 @@ class ResearchTest {
         assertTrue(out.conflicts.isEmpty())
     }
 
+    @Test fun spreadsheetValueMustSitUnderTheMatchingColumnHeader() {
+        val fso = ResearchCache.findings[0].copy(requestId = rentRequest.id)
+        fun failed(f: ProposedFinding) = validateFinding(rentRequest, f, cache.documents, RetrievalMode.LIVE_RESEARCH).failed.map { it.id }
+        // The real qwen2.5:7b misread (2026-11-21): the all-sizes "Total" column reported as 1 room.
+        assertEquals(listOf(CheckId.TABLE_COLUMN_MATCHES), failed(fso.copy(value = "1369", plusMinus = "9")))
+        // The ± column reported as the mean.
+        assertEquals(listOf(CheckId.TABLE_COLUMN_MATCHES), failed(fso.copy(value = "16", plusMinus = null)))
+        // Right column, wrong ± (the 2-room CI).
+        assertEquals(listOf(CheckId.TABLE_COLUMN_MATCHES), failed(fso.copy(plusMinus = "13")))
+        // Right column for 2 rooms is accepted only when the finding says 2 rooms.
+        assertEquals(listOf(CheckId.TABLE_COLUMN_MATCHES), failed(fso.copy(value = "1177", plusMinus = "13")))
+        val ok = validateFinding(rentRequest, fso, cache.documents, RetrievalMode.LIVE_RESEARCH)
+        assertEquals("row 'Lausanne', column 4, header '1 / Durch-schnittlicher Mietpreis'", ok.estimate!!.locator)
+    }
+
     // --- 6. Confirmed values are never overwritten -----------------------------------------
 
     @Test fun researchCannotReplaceAConfirmedValue() {

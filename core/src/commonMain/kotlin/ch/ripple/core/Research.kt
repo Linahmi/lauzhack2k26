@@ -192,7 +192,7 @@ data class ProposedFinding(
 
 enum class CheckId {
     REQUEST_MATCHES, SOURCE_FIELDS_PRESENT, AUTHORITATIVE_HOST, DOCUMENT_RETRIEVED, QUOTE_IN_DOCUMENT,
-    NUMBER_PARSES, VALUE_IN_QUOTE, INTERVAL_IN_QUOTE, CURRENCY_CHF, UNIT_RECOGNIZED, BASIS_DEFINED,
+    NUMBER_PARSES, VALUE_IN_QUOTE, INTERVAL_IN_QUOTE, TABLE_COLUMN_MATCHES, CURRENCY_CHF, UNIT_RECOGNIZED, BASIS_DEFINED,
     HOUSING_DEFINED, GEOGRAPHY_RECOGNIZED, PERIOD_VALID, COMPARABLE_TO_REQUEST,
 }
 
@@ -238,11 +238,15 @@ fun validateFinding(request: ResearchRequest, f: ProposedFinding, documents: Lis
     val inQuote = numbersIn(quote)
     check(CheckId.VALUE_IN_QUOTE, value != null && value in inQuote, "value_not_in_quote")
     check(CheckId.INTERVAL_IN_QUOTE, listOfNotNull(pm, low, high).all { it in inQuote }, "interval_not_in_quote")
+    // Spreadsheet rows: the value must sit under a column header that matches the claim (not "Total", not the ± column).
+    val isHousing = q.category in HOUSING_CATEGORIES
+    val tableRow = doc != null && "spreadsheet" in doc.mediaType && " | " in quote
+    val cell = if (tableRow && value != null) tableCells(doc!!, quote, value, pm).firstOrNull { it.matches(isHousing, f.rooms) } else null
+    check(CheckId.TABLE_COLUMN_MATCHES, !tableRow || cell != null, "value_not_under_a_matching_column_header")
     check(CheckId.CURRENCY_CHF, f.currency?.trim()?.lowercase() in CHF_NAMES, "currency=${f.currency}")
     val unit = f.unit?.let(::parseUnit)
     check(CheckId.UNIT_RECOGNIZED, unit != null, "unit=${f.unit}")
     val basis = parseBasis(f.basis)
-    val isHousing = q.category in HOUSING_CATEGORIES
     // Housing needs net-vs-charges stated; categories with a required basis need gross/net stated.
     check(CheckId.BASIS_DEFINED, (!isHousing && q.basis == AmountBasis.NOT_STATED) || basis != AmountBasis.NOT_STATED, "basis=${f.basis}")
     val tenancy = parseTenancy(f.tenancy)
@@ -278,7 +282,8 @@ fun validateFinding(request: ResearchRequest, f: ProposedFinding, documents: Lis
             basis = if (isHousing) AmountBasis.NOT_STATED else basis,
             retrieval = mode,
             quote = quote,
-            locator = f.locator,
+            // Deterministic locator for spreadsheets (from the document, not the extractor).
+            locator = cell?.let { "row '${it.row}', column ${it.index + 1}, header '${it.header.joinToString(" / ")}'" } ?: f.locator,
         )
     }.getOrNull()
     // An interval that does not contain the point (MarketValue.init) counts as a parse failure.
@@ -373,6 +378,39 @@ fun runResearch(request: ResearchRequest, provider: ResearchProvider?, cache: Re
         },
         cacheVersion = cache?.version?.takeIf { used?.mode == ResearchMode.CACHED },
     )
+}
+
+/** A spreadsheet cell holding the value, with the header cells of its column. */
+internal data class TableCell(val row: String, val index: Int, val header: List<String>, val intervalInNextColumn: Boolean)
+
+/**
+ * Cells of the quoted row that hold [value]. Header rows = rows above it whose first cell is empty.
+ * shortcut: fits the FSO/cantonal table layout; upgrade to merged-cell parsing if other publishers need it.
+ */
+internal fun tableCells(doc: SourceDocument, quote: String, value: Chf, pm: Chf?): List<TableCell> {
+    val lines = doc.text.lines()
+    val q = quote.split(" | ").map(::normalizeText)
+    lines.forEachIndexed { li, line ->
+        val cells = line.split(" | ").map(::normalizeText)
+        val start = (0..cells.size - q.size).firstOrNull { k -> q.indices.all { cells[k + it] == q[it] } } ?: return@forEachIndexed
+        val header = lines.take(li).map { it.split(" | ") }.filter { it.first().isBlank() }
+        return (start until start + q.size).filter { parseChfAmount(cells[it]) == value }.map { c ->
+            TableCell(lines[li].split(" | ").first().trim(), c,
+                header.mapNotNull { h -> h.getOrNull(c)?.trim()?.takeIf(String::isNotEmpty) },
+                pm == null || cells.getOrNull(c + 1)?.let(::parseChfAmount) == pm)
+        }
+    }
+    return emptyList()
+}
+
+private val INTERVAL_LABEL = Regex("intervall|interval|±|marge d")
+
+internal fun TableCell.matches(isHousing: Boolean, rooms: Int?): Boolean {
+    val h = header.map(::normalizeText)
+    if (h.isEmpty() || h.any { INTERVAL_LABEL.containsMatchIn(it) } || !intervalInNextColumn) return false
+    if (!isHousing) return true
+    return if (rooms == null) h.any { it in setOf("total", "ensemble", "alle", "tous", "toutes") }
+    else h.any { it == "$rooms" || it == "$rooms+" || Regex("^$rooms\\s*(zimmer|pièces?|pieces?|rooms?)\\b").containsMatchIn(it) }
 }
 
 private fun conflictsAmong(es: List<MarketEstimate>): List<ResearchConflict> = es.flatMapIndexed { i, a ->
@@ -489,10 +527,13 @@ object ResearchCache {
         SourceDocument(
             url = FSO_XLSX, retrievedOn = "2026-11-21",
             mediaType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            // Rows extracted from the XLSX, non-empty cells joined with " | " (same format as the server extractor).
+            // Rows 1-5, 10, 17, 18, 23, 24 of the XLSX, cells at their column position joined with " | " (same as the server extractor).
             text = listOf(
-                "Durchschnittlicher Mietpreis1) in Franken nach Zimmerzahl für die 10 grössten Städte | T 09.03.03.42",
+                "Durchschnittlicher Mietpreis1) in Franken nach Zimmerzahl für die 10 grössten Städte |  |  |  |  |  |  |  |  |  |  |  |  |  | T 09.03.03.42",
                 "2022-2024 kumuliert",
+                " | Bewohnte Mietwohnungen mit … Zimmer(n)",
+                " | Total |  | 1 |  | 2 |  | 3 |  | 4 |  | 5 |  | 6+",
+                " | " + List(7) { "Durch-schnittlicher Mietpreis | Vertrauens-intervall : ± (in Fr.)" }.joinToString(" | "),
                 "Lausanne | 1369 | 9 | 899 | 16 | 1177 | 13 | 1432 | 14 | 1736 | 24 | 2192 | 61 | 3166 | 203",
                 "1) Monatlicher Netto-Mietzins (ohne Neben- und Heizkosten) der Mieter- und Genossenschafterwohnungen.",
                 "Die Ergebnisse basieren auf drei aufeinanderfolgenden jährlichen Strukturerhebungen.",

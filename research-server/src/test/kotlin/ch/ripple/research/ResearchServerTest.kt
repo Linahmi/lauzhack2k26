@@ -83,6 +83,10 @@ class ResearchServerTest {
                 <row r="10"><c t="s"><v>0</v></c><c><v>1369</v></c><c><v>9</v></c><c><v>899.0</v></c><c><v>16</v></c><c/></row></sheetData></worksheet>""",
         )
         assertEquals("Lausanne | 1369 | 9 | 899 | 16", xlsxText(xlsx))
+        // Gaps are kept from the cell reference, so header cells stay above their values.
+        val header = zip("xl/worksheets/sheet1.xml" to """<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>
+            <row r="4"><c r="B4" t="inlineStr"><is><t>Total</t></is></c><c r="D4"><v>1</v></c></row></sheetData></worksheet>""")
+        assertEquals(" | Total |  | 1", xlsxText(header))
         val (type, _) = extract(xlsx, "application/octet-stream")!!
         assertTrue(type.contains("spreadsheet"))
     }
