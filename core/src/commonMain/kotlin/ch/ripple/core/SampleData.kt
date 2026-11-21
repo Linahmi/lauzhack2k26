@@ -70,6 +70,7 @@ object SampleData {
         stress = alexStress,
         floor = alexFloor,
         repairCap = alexRepairCap,
+        options = listOf(DecisionOption("stay", "option.stay") { alexStay }),
     ) { v -> alexMove(v.getValue("deposit")) }
 
     val moveAbroad = Scenario(

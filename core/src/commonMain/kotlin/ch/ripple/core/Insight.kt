@@ -36,6 +36,7 @@ enum class InsightType {
     FEASIBLE_REPAIR,           // Explorer: an approved action fixes all tested cases
     ACTION_DEADLINE,           // Explorer: latest start for that action
     NO_REPAIR_IN_SCOPE,        // Explorer: nothing in the declared action set works
+    NO_ACCEPTABLE_REPAIR,      // Explorer: something works financially, but not within the user's limits
     ROBUST_CONCLUSION,         // verdict holds across every tested case and unknown range
 }
 

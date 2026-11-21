@@ -53,6 +53,16 @@ Essential:
 Deferred: calendar month names ("April" needs a start date input), free-text extraction
 (use example stories + structured answers first), LLM wording, perspective mixer, voice.
 
+## M2c — Self-correcting twin (core done)
+
+- [x] (A) Typed personal constraints (max monthly cut, cash buffer, rejected actions + reasons)
+      that change the real repair search; financially feasible vs. personally acceptable.
+- [x] (A) Corrections vs. what-if hypotheses; what-ifs never overwrite confirmed inputs.
+- [x] (A) Immutable decision graph: branch, select/revert, compare, per-node summary + diff.
+- [ ] (B) "That doesn't work for me" button on the offered repair → `RejectRepair`; show the
+      `changed` list and the new briefing; simple branch list (label, status, parent).
+- [ ] (B) Desktop: compare two branches (`compareBranches`) with the timeline view.
+
 ## M3 — Accessible journey (main IMC + UBS-transparency milestone)
 
 - Input provenance on every value: `user-stated`, `assumed`, `unknown`, `computed`,

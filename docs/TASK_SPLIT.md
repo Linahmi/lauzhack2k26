@@ -35,7 +35,9 @@ matters (`Briefing`); the UI only renders it. Contract: `core/.../Insight.kt` + 
 
 Done (branch `core/break-my-plan`): Break My Plan engine, asset transfers, Alex demo data,
 `Insight.kt` contract, `brief()` / `answer()` / `markSeen()` with `InputState`
-(exact / range / unknown), `SampleData.alexSession`, facts with `evidenceRef`. Next:
+(exact / range / unknown), `SampleData.alexSession`, facts with `evidenceRef`, personal
+constraints + corrections + hypotheses + decision graph (`startGraph`, `correct`, `explore`,
+`select`, `compareBranches`). Next:
 1. Month-valued unknown (first paycheck month) next to the CHF one (deposit).
 2. Calculation-step facts for Inspect (e.g. threshold formula `C4 = 2000 − deposit`).
 3. Speed: cache stress tests per input combination if `brief()` feels slow on Android.
@@ -52,6 +54,11 @@ Done (branch `core/break-my-plan`): Break My Plan engine, asset transfers, Alex 
 4. Explore level: timeline from `SimulationResult.cashByMonth`, baseline vs. alternative,
    floor line. Inspect level (desktop first): inputs with provenance, witness, search scope.
 5. No arithmetic in Composables — only display engine fields.
+6. Hold a `DecisionGraph` as UI state (start with `startGraph(SampleData.alexSession)`); every
+   answer / "that doesn't work for me" / "what if" goes through `graph.correct(...)` or
+   `graph.explore(...)` and the returned `GraphUpdate` (new graph + briefing + `changed`).
+   Branch list: `graph.nodes` (labelKey, summary.status, parentId, hypothetical); switching =
+   `graph.select(id)` then `graph.briefing()`. API: ARCHITECTURE.md → "Self-correcting twin".
 
 ### Integration checkpoint
 

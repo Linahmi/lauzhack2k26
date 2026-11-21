@@ -167,6 +167,59 @@ with `Chf.format()`. Never compute a number in the UI; everything shown is a fac
 5. **Disclosures** (fictional, hypothetical, tested cases only, cash only, plus "unknown inputs
    searched within bounds" when relevant) are attached to every `Briefing`, outside ranking.
 
+### Self-correcting twin + decision graph (`Corrections.kt`, `DecisionGraph.kt`)
+
+Loop: user correction → `DecisionSession.apply()` → `brief()` reruns every analysis (stress,
+unknowns, repairs) → new `Briefing` → graph node + list of what changed. Older nodes stay
+inspectable; briefings are recomputed from each node's stored session, never copied.
+
+```kotlin
+// Confirmed by the user (changes facts / limits)
+sealed interface Correction {
+    AnswerInput(inputId: String, value: InputState); SetMaxMonthlyReduction(amount: Chf); SetMinCashBuffer(amount: Chf)
+    RejectRepair(action: ExpenseReduction, scope: RejectionScope, reason: String? = null)
+    ClearMaxMonthlyReduction; ClearMinCashBuffer; RemoveRejection(rejectionId: String)
+}
+enum class RejectionScope { EXACT_ACTION, THIS_AMOUNT_OR_MORE, THIS_START_MONTH, ANY_SPENDING_REDUCTION }
+// What-if only (never touches confirmed values; nodes marked hypothetical; disclosure added)
+sealed interface Hypothesis { WhatIfInput(inputId: String, value: Chf); TryOption(optionId: String) }
+
+data class PersonalConstraints(maxMonthlyReduction: Chf?, minCashBuffer: Chf?, rejections: List<Rejection>)
+data class Rejection(id: String, action: ExpenseReduction, scope: RejectionScope, reason: String?) // reason = user's words, never parsed
+
+fun startGraph(session: DecisionSession): DecisionGraph
+fun DecisionGraph.correct(correction: Correction, fromId: String = activeNodeId): GraphUpdate
+fun DecisionGraph.explore(hypothesis: Hypothesis, fromId: String = activeNodeId): GraphUpdate
+fun DecisionGraph.select(id: String): DecisionGraph                 // switch branch / revert
+fun DecisionGraph.briefing(id: String = activeNodeId): Briefing     // recomputed, deterministic
+fun DecisionGraph.compareBranches(aId: String, bId: String): BranchComparison
+val Briefing.offeredRepair: ExpenseReduction?                       // what a "reject" button rejects
+
+DecisionGraph(nodes: List<DecisionNode>, activeNodeId)  // node(id), children(id), path(id), active
+DecisionNode(id, parentId, revision, change: GraphChange, hypothetical, labelKey, session, summary: NodeSummary)
+NodeSummary(status: NodeStatus, primaryInsightId, primaryHeadlineKey, worstMinimumCash, cashBuffer,
+            offeredRepair, financialRepair, latestAcceptableStart, openQuestionInputId, blockedBy)
+NodeStatus { PASSES, REPAIRABLE, ONLY_UNACCEPTABLE_REPAIRS, NO_REPAIR_IN_SCOPE }
+GraphUpdate(graph, node, before: NodeSummary, after: NodeSummary, changed: List<String>, briefing)
+BranchComparison(a, b, nominal: ScenarioComparison, worstCase: ScenarioComparison, differences)
+```
+
+Financially feasible vs. personally acceptable: `RepairOption.financialMinimum` ignores personal
+limits; `minimalMonthlyReduction` is the smallest cut that also passes `PersonalConstraints`
+(both verified for every tested input value and stress case). If only the first exists, the
+briefing shows `NO_ACCEPTABLE_REPAIR` ("works financially at CHF X, outside your limits"),
+never a made-up alternative. `blockedBy` names the constraints responsible.
+
+Provenance: scenario defaults (`floor`, `repairCap`) are `ASSUMED`; user limits and answers are
+`USER_STATED`; what-if values are `ASSUMED` with ref `hypothesis:<id>`.
+
+New UI keys: `insight.no_acceptable_repair`; facts `financial_min_reduction`,
+`financial_start_month`, `constraints_blocking`, `max_acceptable_reduction`; actions
+`action.reject_repair`, `action.edit_constraints`; disclosure `disclosure.what_if_branch_not_confirmed`;
+node labels `node.start`, `node.answer_input`, `node.set_max_reduction`, `node.set_cash_buffer`,
+`node.reject_repair`, `node.clear_constraint`, `node.remove_rejection`, `node.what_if_input`,
+`node.try_option`; option `option.stay`; constraint id `constraint.max_monthly_reduction`.
+
 LLM boundary (later, optional): it may only turn a `Briefing`'s typed facts into sentences;
 it never adds numbers or claims. Without it the UI uses localized templates per key.
 

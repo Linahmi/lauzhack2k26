@@ -43,3 +43,19 @@ One entry per substantial feature (see the challenge gate in [CLAUDE.md](../CLAU
   perspective mixer, LLM wording, calendar month names, free-text extraction.
 - **Guardrail:** disclosures (fictional, hypothetical, tested cases only, cash only) are
   outside the ranking and attached to every `Briefing`.
+
+## 2026-11-21 — Self-correcting twin with personal constraints and a decision graph
+
+- **Problem and beneficiary:** a plan that is "financially feasible" can still be impossible for
+  the person (e.g. they cannot cut CHF 50/month). A twin that ignores this gives useless advice.
+- **UBS:** corrections rerun the real analyses (stress, unknowns, repair search); financially
+  feasible vs. personally acceptable are reported separately; if nothing acceptable remains the
+  engine says so (`NO_ACCEPTABLE_REPAIR` / `NO_REPAIR_IN_SCOPE`) instead of inventing an option.
+  What-if branches never overwrite confirmed inputs; provenance distinguishes them.
+- **IMC:** the user can say "I can't do that" and keep exploring; reasons stay in their own words.
+  No personality scores, no inferred background or obligations. Impact still a hypothesis.
+- **JetBrains:** graph, constraints and recomputation all in `commonMain`; the UI only renders.
+- **Demo proof:** reject the CHF 50 cut → status changes, repair disappears, "works financially at
+  CHF 50 but outside your limits" appears; switch to the "stay" branch and compare.
+- **Feasibility:** 11 new tests incl. a mutation check (ignoring constraints breaks 5 tests).
+  Cut: delaying the move is not modelled, so it is not offered.

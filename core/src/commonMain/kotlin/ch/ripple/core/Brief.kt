@@ -38,27 +38,45 @@ data class DecisionSession(
     /** The "don't do it" path, used for the before/after comparison. */
     val baseline: Scenario,
     val inputs: List<DecisionInput>,
-    /** Missing entries mean Unknown. */
+    /** Confirmed answers (missing entries mean Unknown). Only corrections change these. */
     val values: Map<String, InputState> = emptyMap(),
     val stress: StressSet,
-    /** The user's chosen minimum month-end cash buffer. */
+    /** Default minimum month-end cash buffer of the scenario (ASSUMED unless the user sets one). */
     val floor: Chf,
-    /** Largest monthly flexible-spending cut the user approves (the only repair action modelled). */
+    /** Upper end of the modelled action space: monthly flexible-spending cuts searched (ASSUMED). */
     val repairCap: Chf,
     val repairStep: Chf = Chf.francs(1),
     /** Inputs already asked about (answered or "I'm not sure"): never asked again. */
     val askedInputIds: Set<String> = emptySet(),
     val seenInsightIds: Set<String> = emptySet(),
-    /** Builds the decision scenario from concrete input values. */
+    /** User-confirmed personal limits (only set through corrections). */
+    val constraints: PersonalConstraints = PersonalConstraints(),
+    /** Other modelled decisions, e.g. "stay". Selected only through a Hypothesis. */
+    val options: List<DecisionOption> = emptyList(),
+    val activeOptionId: String? = null,
+    /** What-if values for a hypothetical branch; never mixed into [values]. */
+    val hypotheticalValues: Map<String, Chf> = emptyMap(),
+    /** Builds the main decision scenario from concrete input values. */
     val decision: (Map<String, Chf>) -> Scenario,
 ) {
     init {
         require(inputs.map { it.id }.toSet().size == inputs.size) { "duplicate input ids" }
         require(values.keys.all { k -> inputs.any { it.id == k } }) { "values for undeclared inputs" }
+        require(hypotheticalValues.keys.all { k -> inputs.any { it.id == k } }) { "what-if for undeclared inputs" }
+        require(activeOptionId == null || options.any { it.id == activeOptionId }) { "unknown option '$activeOptionId'" }
     }
 
     fun state(inputId: String): InputState = values[inputId] ?: InputState.Unknown
+
+    /** The cash buffer actually tested: the user's, else the scenario default. */
+    val effectiveFloor: Chf get() = constraints.minCashBuffer ?: floor
+
+    fun scenarioFor(values: Map<String, Chf>): Scenario =
+        (options.firstOrNull { it.id == activeOptionId }?.build ?: decision)(values)
 }
+
+/** An alternative decision the model can evaluate with the same inputs (e.g. not moving). */
+class DecisionOption(val id: String, val labelKey: String, val build: (Map<String, Chf>) -> Scenario)
 
 /** Record an answer ("I'm not sure" = InputState.Unknown). Recompute with brief(). */
 fun DecisionSession.answer(inputId: String, value: InputState): DecisionSession {
@@ -73,9 +91,23 @@ fun DecisionSession.markSeen(insightIds: Collection<String>): DecisionSession =
     copy(seenInsightIds = seenInsightIds + insightIds)
 
 /** A repair start month verified against EVERY tested input value and stress case. */
-data class RepairOption(val startMonth: Int, val minimalMonthlyReduction: Chf?, val candidatesChecked: Int) {
+data class RepairOption(
+    val startMonth: Int,
+    /** Smallest cut that works AND respects the user's personal constraints (null: none). */
+    val minimalMonthlyReduction: Chf?,
+    val candidatesChecked: Int,
+    /** Smallest cut that works financially within the modelled action space, ignoring personal limits. */
+    val financialMinimum: Chf? = minimalMonthlyReduction,
+    /** When nothing acceptable remains: the constraints that exclude [financialMinimum]. */
+    val blockedBy: List<String> = emptyList(),
+) {
     val feasible: Boolean get() = minimalMonthlyReduction != null
+    val financiallyFeasible: Boolean get() = financialMinimum != null
 }
+
+/** The repair the briefing currently offers (earliest acceptable start), for "reject" buttons. */
+val Briefing.offeredRepair: ExpenseReduction?
+    get() = evidence.repairs.firstOrNull { it.feasible }?.let { ExpenseReduction(it.startMonth, it.minimalMonthlyReduction!!) }
 
 data class BriefingEvidence(
     /** The input values (within the stated bounds) that gave the lowest cash. */
@@ -101,6 +133,8 @@ object Keys {
     const val DISCLOSURE_TESTED_CASES = "disclosure.tested_cases_only"
     const val DISCLOSURE_CASH_ONLY = "disclosure.cash_only_month_end"
     const val DISCLOSURE_UNKNOWN_BOUNDED = "disclosure.unknown_inputs_searched_within_bounds"
+    const val DISCLOSURE_WHAT_IF = "disclosure.what_if_branch_not_confirmed"
+    const val CONSTRAINT_MAX_REDUCTION = "constraint.max_monthly_reduction"
     const val LIMIT_NO_PROBABILITIES = "limitation.no_probabilities"
     const val LIMIT_DEPENDS_ON_INPUT = "limitation.depends_on_unknown_input"
     const val LIMIT_ACTION_SET = "limitation.repair_within_declared_action_only"
@@ -109,8 +143,12 @@ object Keys {
 }
 
 fun brief(session: DecisionSession): Briefing = with(session) {
-    // 1. Every combination of uncertain input values x every stress case.
-    val grids = inputs.associate { it.id to it.candidates(state(it.id)) }
+    // Personal buffer and the selected option apply to EVERY analysis below (deliberate shadowing).
+    val floor = effectiveFloor
+    val decision: (Map<String, Chf>) -> Scenario = ::scenarioFor
+
+    // 1. Every combination of uncertain input values x every stress case (what-if values are fixed).
+    val grids = inputs.associate { it.id to (hypotheticalValues[it.id]?.let(::listOf) ?: it.candidates(state(it.id))) }
     val combinationCount = grids.values.fold(1L) { acc, g -> acc * g.size }
     require(combinationCount <= MAX_VALUE_COMBINATIONS) {
         "$combinationCount input combinations exceed $MAX_VALUE_COMBINATIONS; use coarser steps or answer an input"
@@ -133,6 +171,7 @@ fun brief(session: DecisionSession): Briefing = with(session) {
         repairAcrossAll(session, decision(worstInputs), combos.map(decision), start)
     }
     val firstRepair = repairs.firstOrNull { it.feasible }
+    val firstFinancialRepair = repairs.firstOrNull { it.financiallyFeasible }
 
     // 4. Timelines for Explore.
     val scenarios = buildMap {
@@ -146,13 +185,26 @@ fun brief(session: DecisionSession): Briefing = with(session) {
     }
 
     val evidence = BriefingEvidence(worstInputs, combos.size, stress.cases(profile.horizonMonths).size, worst, allPass, nonePass, impacts, repairs)
-    val inputFacts = inputs.map { inputFact(it, state(it.id)) }
+    val inputFacts = inputs.map { i ->
+        hypotheticalValues[i.id]?.let { ExplanationFact("input:${i.id}", FactValue.Money(it), Provenance.ASSUMED, "hypothesis:${i.id}") }
+            ?: inputFact(i, state(i.id))
+    }
+    val floorProvenance = if (constraints.minCashBuffer != null) Provenance.USER_STATED else Provenance.ASSUMED
+    val limitFacts = listOfNotNull(
+        constraints.maxMonthlyReduction?.let { fact("max_acceptable_reduction", FactValue.Money(it), "constraint:max_monthly_reduction", Provenance.USER_STATED) },
+    )
     val askableIds = impacts.filter { it.changesDecision && it.name !in askedInputIds }.map { it.name }
     val followUpInput = askableIds.firstOrNull()?.let { id -> inputs.first { it.id == id } }
 
     val actions = buildList {
         followUpInput?.let { add(UserAction("answer:${it.id}", ActionKind.ANSWER_QUESTION, "action.answer_question")) }
-        if (firstRepair != null) add(UserAction("explore:repair", ActionKind.EXPLORE_ALTERNATIVE, "action.explore_repair", "decision-repaired"))
+        if (firstRepair != null) {
+            add(UserAction("explore:repair", ActionKind.EXPLORE_ALTERNATIVE, "action.explore_repair", "decision-repaired"))
+            add(UserAction("reject:repair", ActionKind.CORRECT_ASSUMPTION, "action.reject_repair"))
+        }
+        if (firstRepair == null && firstFinancialRepair != null) {
+            add(UserAction("edit:constraints", ActionKind.CORRECT_ASSUMPTION, "action.edit_constraints"))
+        }
         add(UserAction("explore:baseline", ActionKind.EXPLORE_ALTERNATIVE, "action.compare_baseline", "baseline"))
         inputs.forEach { add(UserAction("correct:${it.id}", ActionKind.CORRECT_ASSUMPTION, "action.correct_input")) }
         add(UserAction("inspect", ActionKind.INSPECT, "action.inspect"))
@@ -164,7 +216,7 @@ fun brief(session: DecisionSession): Briefing = with(session) {
         val depends = !allPass && !nonePass
         val stressFacts = listOf(
             fact("worst_min_cash", FactValue.Money(worst.worstMinimumCash), "stress:worst"),
-            fact("floor", FactValue.Money(floor), "session:floor", Provenance.USER_STATED),
+            fact("floor", FactValue.Money(floor), "session:floor", floorProvenance),
             fact("cases_checked", FactValue.Count(combos.size * evidence.stressCasesPerCombination), "stress:all"),
             fact("low_income_months", FactValue.Months(worst.worst.lowIncomeMonths), "stress:worst"),
         )
@@ -199,13 +251,17 @@ fun brief(session: DecisionSession): Briefing = with(session) {
         if (!allPass) {
             if (firstRepair != null) {
                 add(FinancialInsight("repair", InsightType.FEASIBLE_REPAIR, InsightSeverity.INFO, "insight.feasible_repair",
-                    listOf(
+                    listOfNotNull(
                         fact("monthly_reduction", FactValue.Money(firstRepair.minimalMonthlyReduction!!), "repair:start:${firstRepair.startMonth}"),
                         fact("start_month", FactValue.Month(firstRepair.startMonth), "repair:start:${firstRepair.startMonth}"),
-                        fact("repair_cap", FactValue.Money(repairCap), "session:repairCap", Provenance.USER_STATED),
+                        fact("repair_cap", FactValue.Money(repairCap), "session:repairCap", Provenance.ASSUMED),
                         fact("candidates_checked", FactValue.Count(firstRepair.candidatesChecked), "repair:start:${firstRepair.startMonth}"),
-                    ),
-                    listOf("decision-repaired", "decision-worst"), inputs.map { it.id }, listOf("explore:repair"),
+                        // Shown when the user's limits pushed the offer above the financial minimum.
+                        firstFinancialRepair?.takeIf { it != firstRepair || it.financialMinimum != it.minimalMonthlyReduction }?.let {
+                            fact("financial_min_reduction", FactValue.Money(it.financialMinimum!!), "repair:start:${it.startMonth}")
+                        },
+                    ) + limitFacts,
+                    listOf("decision-repaired", "decision-worst"), inputs.map { it.id }, listOf("explore:repair", "reject:repair"),
                     listOf(Keys.LIMIT_ACTION_SET, Keys.LIMIT_NOT_ADVICE),
                     listOf(RankReason.ACTIONABLE, RankReason.SUPPORTED_BY_ALL_TESTED_CASES)))
                 val latest = repairs.last { it.feasible }
@@ -213,14 +269,24 @@ fun brief(session: DecisionSession): Briefing = with(session) {
                     listOf(
                         fact("latest_start_month", FactValue.Month(latest.startMonth), "repair:start:${latest.startMonth}"),
                         fact("monthly_reduction_at_latest", FactValue.Money(latest.minimalMonthlyReduction!!), "repair:start:${latest.startMonth}"),
-                        fact("repair_cap", FactValue.Money(repairCap), "session:repairCap", Provenance.USER_STATED),
-                    ),
+                        fact("repair_cap", FactValue.Money(repairCap), "session:repairCap", Provenance.ASSUMED),
+                    ) + limitFacts,
                     listOf("decision-worst"), inputs.map { it.id }, listOf("explore:repair"),
                     listOf(Keys.LIMIT_ACTION_SET, Keys.LIMIT_NOT_ADVICE),
                     listOf(RankReason.ACTIONABLE, RankReason.SUPPORTED_BY_ALL_TESTED_CASES)))
+            } else if (firstFinancialRepair != null) {
+                // Financially possible, but not within what the user accepts: say exactly that.
+                add(FinancialInsight("no-acceptable-repair", InsightType.NO_ACCEPTABLE_REPAIR, InsightSeverity.WARNING, "insight.no_acceptable_repair",
+                    listOf(
+                        fact("financial_min_reduction", FactValue.Money(firstFinancialRepair.financialMinimum!!), "repair:start:${firstFinancialRepair.startMonth}"),
+                        fact("financial_start_month", FactValue.Month(firstFinancialRepair.startMonth), "repair:start:${firstFinancialRepair.startMonth}"),
+                        fact("constraints_blocking", FactValue.Count(firstFinancialRepair.blockedBy.size), "repair:start:${firstFinancialRepair.startMonth}"),
+                    ) + limitFacts,
+                    listOf("decision-worst"), inputs.map { it.id }, listOf("edit:constraints", "inspect"),
+                    listOf(Keys.LIMIT_ACTION_SET), listOf(RankReason.SUPPORTED_BY_ALL_TESTED_CASES)))
             } else {
                 add(FinancialInsight("no-repair", InsightType.NO_REPAIR_IN_SCOPE, InsightSeverity.WARNING, "insight.no_repair_in_scope",
-                    listOf(fact("repair_cap", FactValue.Money(repairCap), "session:repairCap", Provenance.USER_STATED)),
+                    listOf(fact("repair_cap", FactValue.Money(repairCap), "session:repairCap", Provenance.ASSUMED)) + limitFacts,
                     listOf("decision-worst"), inputs.map { it.id }, listOf("inspect"),
                     listOf(Keys.LIMIT_ACTION_SET), listOf(RankReason.SUPPORTED_BY_ALL_TESTED_CASES)))
             }
@@ -244,6 +310,7 @@ fun brief(session: DecisionSession): Briefing = with(session) {
         disclosureKeys = listOfNotNull(
             Keys.DISCLOSURE_FICTIONAL, Keys.DISCLOSURE_HYPOTHETICAL, Keys.DISCLOSURE_TESTED_CASES, Keys.DISCLOSURE_CASH_ONLY,
             Keys.DISCLOSURE_UNKNOWN_BOUNDED.takeIf { uncertain.isNotEmpty() },
+            Keys.DISCLOSURE_WHAT_IF.takeIf { hypotheticalValues.isNotEmpty() || activeOptionId != null },
         ),
         scenarios = scenarios,
         evidence = evidence,
@@ -253,7 +320,7 @@ fun brief(session: DecisionSession): Briefing = with(session) {
 private fun tier(t: InsightType) = when (t) {
     InsightType.LIQUIDITY_BREACH, InsightType.FRAGILE_PLAN, InsightType.ROBUST_CONCLUSION -> 0
     InsightType.DECISION_CHANGING_UNKNOWN -> 1
-    InsightType.FEASIBLE_REPAIR, InsightType.NO_REPAIR_IN_SCOPE -> 2
+    InsightType.FEASIBLE_REPAIR, InsightType.NO_ACCEPTABLE_REPAIR, InsightType.NO_REPAIR_IN_SCOPE -> 2
     InsightType.ACTION_DEADLINE -> 3
 }
 
@@ -280,21 +347,33 @@ private fun unknownFacts(u: UnknownImpact, s: DecisionSession) = listOfNotNull(
 )
 
 /**
- * Smallest monthly cut from [start] that passes the stress set for EVERY scenario.
- * Below the worst scenario's own minimum nothing can pass (that scenario is one of them),
- * so the search starts there and then checks each candidate against all scenarios.
+ * For [start]: (1) the smallest monthly cut that passes the stress set for EVERY scenario
+ * (financial minimum, action-space cap only), then (2) the smallest such cut the user's
+ * personal constraints allow. Below the worst scenario's own minimum nothing can pass (it is
+ * one of the scenarios), so both searches start there and check every candidate against all.
  */
 private fun repairAcrossAll(s: DecisionSession, worstScenario: Scenario, all: List<Scenario>, start: Int): RepairOption {
-    val first = findMinimalMonthlyRepair(s.profile, worstScenario, s.stress, s.floor, start, s.repairCap, s.repairStep)
+    val floor = s.effectiveFloor
+    fun passesAll(r: Chf) = all.all {
+        stressTest(s.profile, it.withExpenseReduction(s.profile.horizonMonths, ExpenseReduction(start, r)), s.stress, floor).passes
+    }
+    val first = findMinimalMonthlyRepair(s.profile, worstScenario, s.stress, floor, start, s.repairCap, s.repairStep)
     var checked = first.candidatesChecked
-    var r = first.minimalMonthlyReduction ?: return RepairOption(start, null, checked)
+    var r = first.minimalMonthlyReduction ?: return RepairOption(start, null, checked, null)
+    var financial: Chf? = null
     while (r <= s.repairCap) {
         if (r != first.minimalMonthlyReduction) checked++
-        val cut = ExpenseReduction(start, r)
-        if (all.all { stressTest(s.profile, it.withExpenseReduction(s.profile.horizonMonths, cut), s.stress, s.floor).passes }) {
-            return RepairOption(start, r, checked)
-        }
+        if (passesAll(r)) { financial = r; break }
         r += s.repairStep
     }
-    return RepairOption(start, null, checked)
+    if (financial == null) return RepairOption(start, null, checked, null)
+
+    var a: Chf = financial
+    while (a <= s.repairCap) {
+        if (s.constraints.excludes(start, a).isEmpty() && (a == financial || passesAll(a).also { checked++ })) {
+            return RepairOption(start, a, checked, financial)
+        }
+        a += s.repairStep
+    }
+    return RepairOption(start, null, checked, financial, s.constraints.excludes(start, financial))
 }
