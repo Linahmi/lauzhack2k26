@@ -3,6 +3,12 @@
 Source: UBS LauzHack 2026 "AI Financial Twin" repository (local clone, read from Git HEAD
 `fbaf35d`, 2026-11-21). The working tree there is empty; files exist only in HEAD.
 
+**Local Git HEAD vs. team ZIP (`ai-financial-twin-lauzhack-2026-main.zip`), compared
+2026-11-21:** all 58 files in HEAD are byte-identical in the ZIP (line endings normalised).
+The ZIP has 3 extra files: `Data/life-events.csv`, `Data/synthetic-transactions.zip`,
+`evaluation/judging-rubric.md` (marked "Draft only"). Starter kit identical → golden values
+unaffected. `starter-kit/README.md` refers to a `NOTICE.md` that exists in neither copy.
+
 ## Licensing (confirmed — `README.md`)
 
 No open-source or open-data licence is granted; materials are "all rights reserved" and

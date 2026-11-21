@@ -25,8 +25,9 @@ them, so both halves meet early.
 
 ### Step 0 — together (~30 min, before splitting)
 
-Agree on these public signatures and their result types, write them into
-`docs/ARCHITECTURE.md`, and merge that small PR to `main`. This is the contract that keeps
+Agree on these public signatures, their result types and one shared fixture JSON, write
+them into `docs/ARCHITECTURE.md`, and merge that small PR to `main`. Each feature PR carries
+the challenge-gate note from [CLAUDE.md](../CLAUDE.md). This is the contract that keeps
 both developers unblocked.
 
 ```kotlin
@@ -43,9 +44,9 @@ every team has that. Priority now is what makes Ripple different, in this order:
 
 1. **Intervention window** (our standout): latest month a given monthly saving can start and
    still avoid the shortfall ("act before month X"); null if already too late.
-2. **Skeptic** `analyzeSensitivity`: shift income / expenses / one-off costs ±10% one at a
-   time; report which assumption flips "shortfall vs. no shortfall" (robust vs.
-   assumption-dependent conclusion).
+2. **Skeptic** `analyzeSensitivity`: give income / expenses / one-off costs explicit low/high
+   bounds (default ±10%), one at a time; report which bound flips "shortfall vs. no
+   shortfall". Results are conditional on the bounds — never probabilities.
 3. **Guardian** `analyzeRisks`: shortfall months, months below a buffer, deepest shortfall,
    funding gap (extra CHF needed to never go negative).
 4. **Explorer** `explore`: rank candidate scenarios vs. baseline and drop the ones that break
@@ -60,14 +61,18 @@ every team has that. Priority now is what makes Ripple different, in this order:
 3. **Desktop chart**: cash over time for both scenarios from `SimulationResult.cashByMonth`,
    negative region highlighted — the core demo visual.
 4. **Assumptions panel**: lists every input of the selected scenario (later the Skeptic's editor).
-5. Run on a real Android device or emulator and note the result.
+5. **Launch proof (JetBrains mandatory):** run on a real Android device or emulator and
+   on desktop; save screenshots to `docs/evidence/`.
 6. Plug in Guardian / Skeptic / Explorer cards as A merges each analysis; until then use
    dummy data matching the agreed types.
 
 ## After M2
 
-- **M3** — Android onboarding: tell your story → structured profile → confirm.
-- **M4** — desktop calculation inspector (per-month `MonthRecord`).
-- **M5** — LLM layer (only calls `core`, narrates its outputs) + perspective mixer.
+- **M3** — accessible journey: input provenance + exact/range/unknown inputs (A), text
+  onboarding → confirmation → simplified results + desktop inspector (B).
+- **M4** — session export/import Android → desktop.
+- **M5** — optional: LLM layer (only calls `core`), perspective mixer, French, themes.
+- **Both, any time:** IMC booth question on Caritas Vaud + backup nonprofit
+  ([CHARITY_VALIDATION.md](CHARITY_VALIDATION.md)).
 
 See [ROADMAP.md](ROADMAP.md).
