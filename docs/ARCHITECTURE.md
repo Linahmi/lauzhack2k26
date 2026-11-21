@@ -220,6 +220,51 @@ node labels `node.start`, `node.answer_input`, `node.set_max_reduction`, `node.s
 `node.reject_repair`, `node.clear_constraint`, `node.remove_rejection`, `node.what_if_input`,
 `node.try_option`; option `option.stay`; constraint id `constraint.max_monthly_reduction`.
 
+### Interactive twin loop (`TradeOffs.kt`, `Commands.kt`)
+
+```kotlin
+// More what-ifs: a cut of a given size AND timing as its own branch
+Hypothesis.ApplyCut(cut: ExpenseReduction)                    // NodeSummary.plannedCut / plannedCutConflicts
+
+// What changed and why
+GraphUpdate.invalidatedOffer: InvalidatedOffer?               // (action, conflicts): the parent's offer now ruled out
+GraphUpdate.node.change                                       // the cause (Correction / Hypothesis)
+fun DecisionGraph.reevaluate(id: String, constraintsFrom: String = activeNodeId): NodeSummary // old node, today's limits
+
+// Trade-offs: every modelled option under the same facts + limits; objective vs. personal fields
+fun tradeOffs(session: DecisionSession): List<TradeOff>
+fun DecisionGraph.tradeOffs(id: String = activeNodeId): List<TradeOff>
+TradeOff(optionId, labelKey,
+         worstMinimumCash, cashBuffer, bufferKeptWithoutChanges, nominalClosingCash, nominalClosingNetWorth,
+         financialCut, latestFinancialStart, noCutInActionSpace,            // objective
+         acceptableCut, latestAcceptableStart, conflictingConstraints,       // the user's limits
+         disclosureKeys, limitationKeys)
+
+// Safe command layer: text/button/LLM → ONE typed command → validated dispatch
+sealed interface TwinCommand { Correct(correction); Explore(hypothesis); Select(nodeId); Compare(aId, bId); Explain; ShowTradeOffs }
+fun DecisionGraph.parseCommand(text: String): TwinCommand?            // deterministic English; null = not understood
+fun DecisionGraph.dispatch(command: TwinCommand, confirmedByUser: Boolean = false): CommandResult
+sealed interface CommandResult { NeedsConfirmation(command); Updated(update: GraphUpdate); Selected(graph, briefing);
+                                 Compared(comparison); Explanation(insight, worstCase, firstViolationMonth, disclosureKeys);
+                                 TradeOffs(options) }
+SampleData.alexDemoScript: List<String>                                // the 5 demo phrases
+```
+
+Rules: `Correct` returns `NeedsConfirmation` unless `confirmedByUser = true` — show the
+interpreted command ("Reject cuts of CHF 50/month or more?") and only then dispatch again.
+`Explore`, `Select`, `Compare`, `Explain`, `ShowTradeOffs` never change confirmed data. The
+parser never invents a number: no amount in the text → no amount-based command. A future
+LLM may only output a `TwinCommand`; it goes through the same confirmation and dispatch.
+
+Phrasing examples for the UI (numbers always from fields):
+- `acceptableCut != null && !bufferKeptWithoutChanges` → "This option keeps your cash buffer in
+  every tested case if you reduce flexible spending by {acceptableCut.monthly} from month {start+1}."
+- `invalidatedOffer != null` / `acceptableCut == null && financialCut != null` → "That adjustment
+  doesn't fit the limits you gave me. Here's what remains possible." + `tradeOffs()`.
+- `noCutInActionSpace` → "Within the options I can model, no spending change fixes this."
+
+New keys: `node.apply_cut`, `option.move`.
+
 LLM boundary (later, optional): it may only turn a `Briefing`'s typed facts into sentences;
 it never adds numbers or claims. Without it the UI uses localized templates per key.
 

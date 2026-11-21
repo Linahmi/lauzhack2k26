@@ -59,3 +59,18 @@ One entry per substantial feature (see the challenge gate in [CLAUDE.md](../CLAU
   CHF 50 but outside your limits" appears; switch to the "stay" branch and compare.
 - **Feasibility:** 11 new tests incl. a mutation check (ignoring constraints breaks 5 tests).
   Cut: delaying the move is not modelled, so it is not offered.
+
+## 2026-11-21 — Interactive twin loop (trade-offs + safe command layer)
+
+- **Problem and beneficiary:** UBS feedback — "make it explorable". Users must be able to say
+  "I can't do that" or "what if I stayed?" and see the twin's actual reasoning change.
+- **UBS:** every option gets objective engine results (worst cash, buffer kept, required cut,
+  timing) next to the user's own limits; no scores or probabilities. Spending cuts and their
+  timing are explorable branches; old offers are shown as invalidated, with the constraint.
+- **IMC:** plain phrases instead of forms; the twin confirms its interpretation before changing
+  anything; unparseable text falls back to buttons, never to a guess.
+- **JetBrains:** parser, dispatch, trade-offs and graph are `commonMain`; UI only renders.
+- **Safety:** confirmed-state changes require `confirmedByUser`; a future LLM may only emit a
+  `TwinCommand` through the same gate. No LLM dependency added.
+- **Feasibility:** 9 new tests incl. a scripted end-to-end demo; mutation checks (dropping the
+  confirmation gate or the planned cut) each fail 2 tests.

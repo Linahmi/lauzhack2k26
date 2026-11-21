@@ -62,6 +62,10 @@ Deferred: calendar month names ("April" needs a start date input), free-text ext
 - [ ] (B) "That doesn't work for me" button on the offered repair → `RejectRepair`; show the
       `changed` list and the new briefing; simple branch list (label, status, parent).
 - [ ] (B) Desktop: compare two branches (`compareBranches`) with the timeline view.
+- [x] (A) Interactive loop: cut/timing what-ifs, invalidated offers, `reevaluate`, `tradeOffs`,
+      typed `TwinCommand` + deterministic parser + confirmation-gated `dispatch`, demo script.
+- [ ] (B) Text box + buttons → `parseCommand` / `dispatch`; confirmation sheet for `NeedsConfirmation`;
+      trade-off cards; replay `SampleData.alexDemoScript` as a demo button.
 
 ## M3 — Accessible journey (main IMC + UBS-transparency milestone)
 

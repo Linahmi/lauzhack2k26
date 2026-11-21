@@ -63,6 +63,8 @@ sealed interface Hypothesis {
     data class WhatIfInput(val inputId: String, val value: Chf) : Hypothesis
     /** Evaluate another modelled decision, e.g. "stay". */
     data class TryOption(val optionId: String) : Hypothesis
+    /** Try a spending cut of a given size and timing in this branch (e.g. CHF 100 from month 4). */
+    data class ApplyCut(val cut: ExpenseReduction) : Hypothesis
 }
 
 fun DecisionSession.apply(c: Correction): DecisionSession = when (c) {
@@ -96,4 +98,5 @@ fun DecisionSession.apply(h: Hypothesis): DecisionSession = when (h) {
         copy(hypotheticalValues = hypotheticalValues + (h.inputId to h.value))
     }
     is Hypothesis.TryOption -> copy(activeOptionId = h.optionId) // validated in DecisionSession.init
+    is Hypothesis.ApplyCut -> copy(plannedCut = h.cut)           // validated in DecisionSession.init
 }

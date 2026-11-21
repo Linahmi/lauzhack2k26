@@ -59,6 +59,11 @@ constraints + corrections + hypotheses + decision graph (`startGraph`, `correct`
    `graph.explore(...)` and the returned `GraphUpdate` (new graph + briefing + `changed`).
    Branch list: `graph.nodes` (labelKey, summary.status, parentId, hypothetical); switching =
    `graph.select(id)` then `graph.briefing()`. API: ARCHITECTURE.md → "Self-correcting twin".
+7. Conversation box: `graph.parseCommand(text)` → `graph.dispatch(cmd)`; on `NeedsConfirmation`
+   show the interpretation with Confirm / Cancel, then `dispatch(cmd, confirmedByUser = true)`;
+   `null` from the parser → show buttons instead. "Show alternatives" → trade-off cards from
+   `TradeOff` (objective fields and the user's limits in separate sections).
+   API: ARCHITECTURE.md → "Interactive twin loop".
 
 ### Integration checkpoint
 

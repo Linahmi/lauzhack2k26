@@ -56,6 +56,10 @@ data class DecisionSession(
     val activeOptionId: String? = null,
     /** What-if values for a hypothetical branch; never mixed into [values]. */
     val hypotheticalValues: Map<String, Chf> = emptyMap(),
+    /** What-if spending cut applied to the plan in this branch (amount + timing). */
+    val plannedCut: ExpenseReduction? = null,
+    /** Label of the main decision (e.g. "option.move"); alternatives carry their own. */
+    val decisionLabelKey: String = "option.main",
     /** Builds the main decision scenario from concrete input values. */
     val decision: (Map<String, Chf>) -> Scenario,
 ) {
@@ -64,15 +68,23 @@ data class DecisionSession(
         require(values.keys.all { k -> inputs.any { it.id == k } }) { "values for undeclared inputs" }
         require(hypotheticalValues.keys.all { k -> inputs.any { it.id == k } }) { "what-if for undeclared inputs" }
         require(activeOptionId == null || options.any { it.id == activeOptionId }) { "unknown option '$activeOptionId'" }
+        plannedCut?.let { require(it.startMonth in 0 until profile.horizonMonths && !it.monthly.isNegative) { "invalid planned cut" } }
     }
+
+    /** True if this state contains any what-if (not the user's confirmed situation). */
+    val isHypothetical: Boolean get() = hypotheticalValues.isNotEmpty() || activeOptionId != null || plannedCut != null
 
     fun state(inputId: String): InputState = values[inputId] ?: InputState.Unknown
 
     /** The cash buffer actually tested: the user's, else the scenario default. */
     val effectiveFloor: Chf get() = constraints.minCashBuffer ?: floor
 
-    fun scenarioFor(values: Map<String, Chf>): Scenario =
-        (options.firstOrNull { it.id == activeOptionId }?.build ?: decision)(values)
+    fun scenarioFor(values: Map<String, Chf>): Scenario {
+        val base = (options.firstOrNull { it.id == activeOptionId }?.build ?: decision)(values)
+        return plannedCut?.let { base.withExpenseReduction(profile.horizonMonths, it) } ?: base
+    }
+
+    val activeLabelKey: String get() = options.firstOrNull { it.id == activeOptionId }?.labelKey ?: decisionLabelKey
 }
 
 /** An alternative decision the model can evaluate with the same inputs (e.g. not moving). */
@@ -310,7 +322,7 @@ fun brief(session: DecisionSession): Briefing = with(session) {
         disclosureKeys = listOfNotNull(
             Keys.DISCLOSURE_FICTIONAL, Keys.DISCLOSURE_HYPOTHETICAL, Keys.DISCLOSURE_TESTED_CASES, Keys.DISCLOSURE_CASH_ONLY,
             Keys.DISCLOSURE_UNKNOWN_BOUNDED.takeIf { uncertain.isNotEmpty() },
-            Keys.DISCLOSURE_WHAT_IF.takeIf { hypotheticalValues.isNotEmpty() || activeOptionId != null },
+            Keys.DISCLOSURE_WHAT_IF.takeIf { isHypothetical },
         ),
         scenarios = scenarios,
         evidence = evidence,

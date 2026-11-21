@@ -71,7 +71,17 @@ object SampleData {
         floor = alexFloor,
         repairCap = alexRepairCap,
         options = listOf(DecisionOption("stay", "option.stay") { alexStay }),
+        decisionLabelKey = "option.move",
     ) { v -> alexMove(v.getValue("deposit")) }
+
+    /** Demo script for the command layer (Break → Repair → Reject → Recompute → Compare → Explain). */
+    val alexDemoScript = listOf(
+        "Why does this plan fail?",
+        "I can't reduce my spending by that much",
+        "Show me the alternative",
+        "What if I stayed where I am?",
+        "My deposit is actually CHF 1,500",
+    )
 
     val moveAbroad = Scenario(
         name = "Move abroad",

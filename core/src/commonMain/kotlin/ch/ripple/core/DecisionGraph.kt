@@ -39,7 +39,14 @@ data class NodeSummary(
     val openQuestionInputId: String?,
     /** Why the financial repair is not offered (constraint / rejection ids). */
     val blockedBy: List<String>,
+    /** The what-if cut tried in this branch, if any. */
+    val plannedCut: ExpenseReduction? = null,
+    /** Personal constraints the planned cut conflicts with (objective result may still pass). */
+    val plannedCutConflicts: List<String> = emptyList(),
 )
+
+/** An option offered in the previous state that the user's new constraints now rule out. */
+data class InvalidatedOffer(val action: ExpenseReduction, val conflicts: List<String>)
 
 data class DecisionNode(
     val id: String,
@@ -72,6 +79,8 @@ data class GraphUpdate(
     /** Summary field names that differ (e.g. "status", "offered_repair"). */
     val changed: List<String>,
     val briefing: Briefing,
+    /** Why it changed = [node].change. If the parent's offer is now excluded, which one and by what. */
+    val invalidatedOffer: InvalidatedOffer? = null,
 )
 
 data class BranchComparison(
@@ -103,6 +112,15 @@ fun DecisionGraph.select(id: String): DecisionGraph = copy(activeNodeId = node(i
 /** Full briefing for a node, recomputed from its session (deterministic). */
 fun DecisionGraph.briefing(id: String = activeNodeId): Briefing = brief(node(id).session)
 
+/**
+ * Re-run node [id] under the personal constraints of node [constraintsFrom] (default: active),
+ * e.g. to show what an earlier option looks like after the user's latest correction.
+ */
+fun DecisionGraph.reevaluate(id: String, constraintsFrom: String = activeNodeId): NodeSummary {
+    val s = node(id).session.copy(constraints = node(constraintsFrom).session.constraints)
+    return summarize(s, brief(s))
+}
+
 fun DecisionGraph.compareBranches(aId: String, bId: String): BranchComparison {
     val (a, b) = node(aId) to node(bId)
     val (ba, bb) = briefing(aId) to briefing(bId)
@@ -119,10 +137,13 @@ private fun DecisionGraph.addChild(fromId: String, change: GraphChange, session:
     val b = brief(session)
     val child = DecisionNode("n${nodes.size}", parent.id, parent.revision + 1, change, hypothetical, labelKey(change), session, summarize(session, b))
     val graph = DecisionGraph(nodes + child, child.id)
-    return GraphUpdate(graph, child, parent.summary, child.summary, diff(parent.summary, child.summary), b)
+    val invalidated = parent.summary.offeredRepair?.let { a ->
+        session.constraints.excludes(a.startMonth, a.monthly).takeIf { it.isNotEmpty() }?.let { InvalidatedOffer(a, it) }
+    }
+    return GraphUpdate(graph, child, parent.summary, child.summary, diff(parent.summary, child.summary), b, invalidated)
 }
 
-private fun summarize(s: DecisionSession, b: Briefing): NodeSummary {
+internal fun summarize(s: DecisionSession, b: Briefing): NodeSummary {
     val repairs = b.evidence.repairs
     val acceptable = repairs.firstOrNull { it.feasible }
     val financial = repairs.firstOrNull { it.financiallyFeasible }
@@ -142,6 +163,8 @@ private fun summarize(s: DecisionSession, b: Briefing): NodeSummary {
         latestAcceptableStart = repairs.lastOrNull { it.feasible }?.startMonth,
         openQuestionInputId = b.followUp?.inputId,
         blockedBy = if (acceptable == null) financial?.blockedBy.orEmpty() else emptyList(),
+        plannedCut = s.plannedCut,
+        plannedCutConflicts = s.plannedCut?.let { s.constraints.excludes(it.startMonth, it.monthly) }.orEmpty(),
     )
 }
 
@@ -155,6 +178,8 @@ private fun diff(a: NodeSummary, b: NodeSummary) = listOfNotNull(
     "latest_acceptable_start".takeIf { a.latestAcceptableStart != b.latestAcceptableStart },
     "open_question".takeIf { a.openQuestionInputId != b.openQuestionInputId },
     "blocked_by".takeIf { a.blockedBy != b.blockedBy },
+    "planned_cut".takeIf { a.plannedCut != b.plannedCut },
+    "planned_cut_conflicts".takeIf { a.plannedCutConflicts != b.plannedCutConflicts },
 )
 
 private fun labelKey(c: GraphChange) = when (c) {
@@ -170,5 +195,6 @@ private fun labelKey(c: GraphChange) = when (c) {
     is GraphChange.Explored -> when (c.hypothesis) {
         is Hypothesis.WhatIfInput -> "node.what_if_input"
         is Hypothesis.TryOption -> "node.try_option"
+        is Hypothesis.ApplyCut -> "node.apply_cut"
     }
 }
