@@ -11,27 +11,59 @@ Shared files (change only with a heads-up): `gradle/libs.versions.toml`,
 
 ## Working agreement
 
-1. A proposes new public `core` signatures in `ARCHITECTURE.md` first (small PR).
-2. B builds against them using `SampleData` or a stub returning fixed objects in `composeApp`.
-3. Merge to `main` at least twice a day; `main` must always pass
-   `./gradlew :core:allTests :composeApp:compileKotlinJvm :androidApp:assembleDebug`.
-4. No financial arithmetic in UI code — if the UI needs a number, add it to `core`.
+- A only touches `core/`; B only touches `composeApp/` and `androidApp/`.
+- Merge to `main` at least twice a day; `main` must always pass
+  `./gradlew :core:allTests :composeApp:compileKotlinJvm :androidApp:assembleDebug`.
+- No financial arithmetic in UI code — if the UI needs a number, A adds it to `core`.
+- Additive `core` changes are free; renaming/removing a public type needs a heads-up.
 
-## Next tasks
+## Next milestone: M2 — financial intelligence
 
-**Developer A (Milestone 2)**
-- Guardian: `analyzeRisks` — shortfall months, months below a buffer, deepest shortfall,
-  funding gap (CHF needed to stay ≥ buffer), with tests.
-- Intervention window: latest month a given monthly saving/expense cut still avoids the
-  shortfall; tests at the boundary month.
-- Skeptic: one-at-a-time sensitivity on income/expenses/one-off costs (±x%), report which
-  assumption flips "has shortfall"; tests.
-- Explorer: compare N candidate scenarios against baseline; filter by constraints.
+A makes Guardian / Skeptic / Explorer real in `core`; B builds the screens that will show
+them, so both halves meet early.
 
-**Developer B (Milestone 3/4 prep)**
-- Navigation shell + layout that adapts phone vs desktop width.
-- Scenario picker (baseline/alternative from `SampleData`) and live recompute.
-- Desktop cash-over-time line chart from `SimulationResult.cashByMonth` (baseline vs
-  alternative), shortfall region highlighted.
-- Assumptions panel listing every input of the selected scenario.
-- Run the app on a real Android device/emulator and record results.
+### Step 0 — together (~30 min, before splitting)
+
+Agree on these public signatures and their result types, write them into
+`docs/ARCHITECTURE.md`, and merge that small PR to `main`. This is the contract that keeps
+both developers unblocked.
+
+```kotlin
+fun analyzeRisks(result: SimulationResult, minCashBuffer: Chf = Chf.ZERO): RiskReport               // Guardian
+fun interventionWindow(profile, scenario, monthlySaving: Chf): Int?                                  // Guardian
+fun analyzeSensitivity(profile, scenario, shiftPercent: Int = 10): SensitivityReport                 // Skeptic
+fun explore(profile, baseline: Scenario, candidates: List<Scenario>): List<ScenarioComparison>       // Explorer
+```
+
+### Developer A — `core`
+
+1. **Guardian** `analyzeRisks`: shortfall months, months below a buffer, deepest shortfall,
+   funding gap (extra CHF needed to never go negative).
+2. **Intervention window**: latest month a given monthly saving can start and still avoid the
+   shortfall ("act before month X").
+3. **Skeptic** `analyzeSensitivity`: shift income / expenses / one-off costs ±10% one at a
+   time; report which assumption flips "shortfall vs. no shortfall" (robust vs.
+   assumption-dependent conclusion).
+4. **Explorer** `explore`: rank candidate scenarios vs. baseline and drop the ones that break
+   a constraint (e.g. cash < 0).
+5. **Tests for each**, checked against hand calculations on Alexia's master's scenario
+   (e.g. its funding gap must be CHF 18,600).
+
+### Developer B — `composeApp` / `androidApp` (M3–M4 groundwork)
+
+1. Navigation shell + adaptive layout: single column on phone, side-by-side panels on desktop.
+2. Scenario picker (baseline vs. alternative) with live recompute via `compare()`.
+3. **Desktop chart**: cash over time for both scenarios from `SimulationResult.cashByMonth`,
+   negative region highlighted — the core demo visual.
+4. **Assumptions panel**: lists every input of the selected scenario (later the Skeptic's editor).
+5. Run on a real Android device or emulator and note the result.
+6. Plug in Guardian / Skeptic / Explorer cards as A merges each analysis; until then use
+   dummy data matching the agreed types.
+
+## After M2
+
+- **M3** — Android onboarding: tell your story → structured profile → confirm.
+- **M4** — desktop calculation inspector (per-month `MonthRecord`).
+- **M5** — LLM layer (only calls `core`, narrates its outputs) + perspective mixer.
+
+See [ROADMAP.md](ROADMAP.md).
