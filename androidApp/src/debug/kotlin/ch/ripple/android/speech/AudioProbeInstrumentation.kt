@@ -9,7 +9,8 @@ import java.util.concurrent.atomic.AtomicLong
 
 /** Explicit ADB-only capture diagnostic, absent from release. Records no files and sends no audio. */
 class AudioProbeInstrumentation : Instrumentation() {
-    override fun onCreate(arguments: Bundle?) { super.onCreate(arguments); start() }
+    private var mode = "capture"
+    override fun onCreate(arguments: Bundle?) { mode = arguments?.getString("mode") ?: "capture"; super.onCreate(arguments); start() }
     override fun onStart() {
         val result = Bundle()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -25,17 +26,21 @@ class AudioProbeInstrumentation : Instrumentation() {
             peak = maxOf(peak, level)
         }, { playing, _ -> if (playing) played.set(true) else drained.set(true) }, { failed = true })
         try {
-            audio.startMicrophone()
-            SystemClock.sleep(3_000)
-            audio.stopMicrophone()
-            // Known synthetic 100ms PCM tone tests the output pipe; never a pretend Gemini response.
-            val tone = ByteArray(4_800)
-            for (i in 0 until 2_400) {
-                val sample = (kotlin.math.sin(i * 2.0 * Math.PI * 440 / 24_000) * 2_000).toInt()
+            if (mode != "tone") {
+                audio.startMicrophone()
+                SystemClock.sleep(3_000)
+                audio.stopMicrophone()
+            }
+            // Three quiet 250ms beeps, separated by silence. No microphone in tone mode.
+            val tone = ByteArray(72_000)
+            for (i in 0 until 36_000) {
+                val inBeep = i % 12_000 < 6_000
+                val envelope = minOf(1.0, (i % 12_000) / 240.0, (6_000 - i % 12_000).coerceAtLeast(0) / 240.0)
+                val sample = if (inBeep) (kotlin.math.sin(i * 2.0 * Math.PI * 440 / 24_000) * 2_000 * envelope).toInt() else 0
                 tone[i * 2] = sample.toByte(); tone[i * 2 + 1] = (sample shr 8).toByte()
             }
             audio.enqueue(tone); audio.turnComplete()
-            SystemClock.sleep(1_000)
+            SystemClock.sleep(2_000)
             result.putLong("capturedBytes", bytes.get())
             result.putLong("nonZeroBytes", nonZero.get())
             result.putFloat("peakLevel", peak)

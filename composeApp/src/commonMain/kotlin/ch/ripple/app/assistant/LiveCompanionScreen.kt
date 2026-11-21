@@ -64,9 +64,16 @@ fun LiveCompanionScreen(
                     LivePhase.Listening -> "Listening"
                     LivePhase.Thinking -> "Gemini thinking"
                     LivePhase.Speaking -> "Gemini speaking"
-                    LivePhase.Muted -> "Microphone muted"
+                    LivePhase.MicrophoneMuted -> "Microphone muted"
+                    LivePhase.SpeakerMuted -> "Speaker muted"
+                    LivePhase.Disconnected -> "Disconnected"
                     LivePhase.Error -> "Conversation unavailable"
                 }, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }, style = MaterialTheme.typography.bodyLarge)
+                if (state.connected) Text(
+                    (if (state.muted) "Microphone muted" else "Microphone on") + " · " +
+                        (if (state.speakerMuted) "Speaker muted" else "Speaker on"),
+                    style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center)
+                if (state.responseStopped) Text("Reply stopped. You can keep talking.", style = MaterialTheme.typography.bodySmall)
                 Spacer(Modifier.height(20.dp))
                 Text("Tell me what's on your mind. I'm here to help.", style = MaterialTheme.typography.bodyLarge,
                     textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -82,8 +89,8 @@ fun LiveCompanionScreen(
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 if (active) {
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        OutlinedButton({ live.stopAudio() }, Modifier.heightIn(min = 56.dp)) { Text("Stop") }
-                        OutlinedButton({ live.mute(!state.muted) }, Modifier.heightIn(min = 56.dp)) { Text(if (state.muted) "Unmute" else "Mute") }
+                        OutlinedButton({ live.stopAudio() }, Modifier.heightIn(min = 56.dp), enabled = state.connected) { Text("Stop reply") }
+                        OutlinedButton({ live.mute(!state.muted) }, Modifier.heightIn(min = 56.dp), enabled = state.connected) { Text(if (state.muted) "Unmute mic" else "Mute mic") }
                     }
                     TextButton({ live.end() }, Modifier.heightIn(min = 56.dp)) { Text("End conversation") }
                 }
@@ -106,6 +113,10 @@ fun LiveCompanionScreen(
         text = { Column {
             Text("English and French are selected naturally by your speech. Native Gemini audio is separate from the guided demo's Android read-aloud.")
             TextButton({ live.replay() }, Modifier.heightIn(min = 56.dp), enabled = state.connected && state.canReplay) { Text("Replay last response") }
+            TextButton({ live.muteSpeaker(!state.speakerMuted) }, Modifier.heightIn(min = 56.dp), enabled = state.connected) {
+                Text(if (state.speakerMuted) "Unmute speaker" else "Mute speaker")
+            }
+            Text("Microphone mute only pauses recording. Speaker mute only silences replies. Replies use Android's call volume; raise it while a reply is playing if needed.", style = MaterialTheme.typography.bodySmall)
             Text(state.model.ifBlank { "Model supplied by your local token service." }, style = MaterialTheme.typography.bodySmall)
             Text("My Finances is not implemented yet. The supported My Future experience is the fictional moving-home guided demo. No automatic navigation or financial corrections are enabled for Live voice.", style = MaterialTheme.typography.bodySmall)
             TextButton({ live.end(); options = false; textMode = true }, Modifier.heightIn(min = 56.dp)) { Text("Explore my future plan · demo") }

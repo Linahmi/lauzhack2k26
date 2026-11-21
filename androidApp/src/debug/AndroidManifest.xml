@@ -2,4 +2,6 @@
     <application android:networkSecurityConfig="@xml/local_token_security" />
     <instrumentation android:name="ch.ripple.android.speech.AudioProbeInstrumentation"
         android:targetPackage="ch.ripple.android" android:label="Explicit local microphone probe" />
+    <instrumentation android:name="ch.ripple.android.speech.GeminiOutputProbeInstrumentation"
+        android:targetPackage="ch.ripple.android" android:label="Explicit Gemini output-only probe" />
 </manifest>

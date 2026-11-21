@@ -5,6 +5,7 @@ import android.media.*
 import android.media.audiofx.AcousticEchoCanceler
 import android.media.audiofx.NoiseSuppressor
 import android.os.Build
+import android.util.Log
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import java.util.concurrent.atomic.AtomicInteger
@@ -28,12 +29,17 @@ internal class LivePcmAudio(
     private val lock = Any()
     private var track: AudioTrack? = null
     private var framesWritten = 0L
+    private var totalBytesWritten = 0L
+    private var firstWrite = true
+    private var speakerMuted = false
     @Volatile private var complete = false
     @Volatile private var closed = false
     private val playback = scope.launch(Dispatchers.IO) {
         try {
             while (isActive) {
-                val chunk = withTimeoutOrNull(40) { queue.receive() }
+                // A timed receive can consume a packet just as its timeout cancels the coroutine.
+                // Poll without cancelling a receive so accepted PCM cannot disappear at that boundary.
+                val chunk = queue.tryReceive().getOrNull()
                 if (chunk != null && chunk.epoch == epoch.get()) {
                     var offset = 0
                     while (offset < chunk.bytes.size && isActive && chunk.epoch == epoch.get()) {
@@ -47,8 +53,17 @@ internal class LivePcmAudio(
                         if (count < 0) error("Audio playback failed")
                         if (count == 0) delay(10) else {
                             offset += count
-                            synchronized(lock) { if (chunk.epoch == epoch.get()) framesWritten += count / 2 }
-                            onPlayback(true, level(chunk.bytes))
+                            synchronized(lock) {
+                                if (chunk.epoch == epoch.get()) {
+                                    framesWritten += count / 2
+                                    totalBytesWritten += count
+                                    if (firstWrite) {
+                                        firstWrite = false
+                                        Log.i("RippleLive", "First PCM write: bytes=$count rate=24000 channels=1 encoding=PCM16 state=${track?.playState} route=${track?.routedDevice?.type}")
+                                    }
+                                }
+                            }
+                            onPlayback(true, if (speakerMuted) 0f else level(chunk.bytes))
                         }
                     }
                 }
@@ -56,7 +71,12 @@ internal class LivePcmAudio(
                     complete && queue.isEmpty && (track == null ||
                         (track!!.playbackHeadPosition.toLong() and 0xffffffffL) >= framesWritten)
                 }
-                if (drained) { complete = false; onPlayback(false, 0f) }
+                if (drained) {
+                    complete = false
+                    Log.i("RippleLive", "PCM drained: totalBytes=$totalBytesWritten framesWritten=$framesWritten playbackHead=${track?.playbackHeadPosition}")
+                    onPlayback(false, 0f)
+                }
+                if (chunk == null) delay(10)
             }
         } catch (cancelled: CancellationException) { throw cancelled
         } catch (_: Exception) { if (!closed) onError() }
@@ -72,8 +92,23 @@ internal class LivePcmAudio(
             check(it.state == AudioTrack.STATE_INITIALIZED)
             it.setBufferSizeInFrames(960)
             if (Build.VERSION.SDK_INT >= 31) it.setStartThresholdInFrames(1)
+            check(it.setVolume(if (speakerMuted) 0f else 1f) == AudioTrack.SUCCESS)
             track = it
         }
+
+    fun muteSpeaker(muted: Boolean) = synchronized(lock) {
+        speakerMuted = muted
+        track?.let { check(it.setVolume(if (muted) 0f else 1f) == AudioTrack.SUCCESS) }
+    }
+
+    fun diagnostics(): String = synchronized(lock) {
+        "bytes=$totalBytesWritten frames=$framesWritten head=${track?.playbackHeadPosition ?: 0} playState=${track?.playState ?: 0} route=${track?.routedDevice?.type ?: 0} speakerMuted=$speakerMuted"
+    }
+
+    fun hasDrainedOutput(): Boolean = synchronized(lock) {
+        totalBytesWritten > 0 && queue.isEmpty && track != null &&
+            (track!!.playbackHeadPosition.toLong() and 0xffffffffL) >= framesWritten
+    }
 
     @SuppressLint("MissingPermission") // Called only after MainActivity permission callback.
     fun startMicrophone() {
