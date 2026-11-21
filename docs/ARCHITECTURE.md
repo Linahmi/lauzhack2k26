@@ -113,7 +113,7 @@ evidence into **one** primary insight and at most **one** question; the UI only 
 
 ```kotlin
 var session = SampleData.alexSession          // deposit starts Unknown (searched over CHF 1,300–1,700)
-var b: Briefing = brief(session)              // pure + deterministic; JVM ~1 s for this session → call off the UI thread
+var b: Briefing = brief(session)              // pure + deterministic; ~10 ms warm, ~200 ms first call (JVM and Android emulator) → still call off the UI thread
 session = session.answer("deposit", InputState.Exact(Chf.francs(1_400)))   // or Range(low, high) / InputState.Unknown ("I'm not sure")
 session = session.markSeen(listOf(b.primary.id))
 b = brief(session)                            // recompute after every change

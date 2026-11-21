@@ -22,6 +22,8 @@ sealed interface GraphChange {
     data object Start : GraphChange
     data class Corrected(val correction: Correction) : GraphChange
     data class Explored(val hypothesis: Hypothesis) : GraphChange
+    /** A new market snapshot was attached; [droppedAssumptions] = inputs whose estimate no longer applies. */
+    data class MarketDataUpdated(val fromVersion: String?, val toVersion: String, val droppedAssumptions: List<String>) : GraphChange
 }
 
 /** What a node concluded — small enough to list and diff; evidence via [DecisionGraph.briefing]. */
@@ -43,6 +45,10 @@ data class NodeSummary(
     val plannedCut: ExpenseReduction? = null,
     /** Personal constraints the planned cut conflicts with (objective result may still pass). */
     val plannedCutConflicts: List<String> = emptyList(),
+    /** inputId -> market estimate id used as a what-if in this branch. */
+    val marketAssumptions: Map<String, String> = emptyMap(),
+    /** Snapshot version this node was computed with (null: no market data). */
+    val marketDataVersion: String? = null,
 )
 
 /** An option offered in the previous state that the user's new constraints now rule out. */
@@ -132,7 +138,7 @@ fun DecisionGraph.compareBranches(aId: String, bId: String): BranchComparison {
     )
 }
 
-private fun DecisionGraph.addChild(fromId: String, change: GraphChange, session: DecisionSession, hypothetical: Boolean): GraphUpdate {
+internal fun DecisionGraph.addChild(fromId: String, change: GraphChange, session: DecisionSession, hypothetical: Boolean): GraphUpdate {
     val parent = node(fromId)
     val b = brief(session)
     val child = DecisionNode("n${nodes.size}", parent.id, parent.revision + 1, change, hypothetical, labelKey(change), session, summarize(session, b))
@@ -165,6 +171,8 @@ internal fun summarize(s: DecisionSession, b: Briefing): NodeSummary {
         blockedBy = if (acceptable == null) financial?.blockedBy.orEmpty() else emptyList(),
         plannedCut = s.plannedCut,
         plannedCutConflicts = s.plannedCut?.let { s.constraints.excludes(it.startMonth, it.monthly) }.orEmpty(),
+        marketAssumptions = s.marketAssumptions,
+        marketDataVersion = s.marketData?.version,
     )
 }
 
@@ -180,6 +188,8 @@ private fun diff(a: NodeSummary, b: NodeSummary) = listOfNotNull(
     "blocked_by".takeIf { a.blockedBy != b.blockedBy },
     "planned_cut".takeIf { a.plannedCut != b.plannedCut },
     "planned_cut_conflicts".takeIf { a.plannedCutConflicts != b.plannedCutConflicts },
+    "market_assumptions".takeIf { a.marketAssumptions != b.marketAssumptions },
+    "market_data_version".takeIf { a.marketDataVersion != b.marketDataVersion },
 )
 
 private fun labelKey(c: GraphChange) = when (c) {
@@ -191,10 +201,14 @@ private fun labelKey(c: GraphChange) = when (c) {
         is Correction.RejectRepair -> "node.reject_repair"
         Correction.ClearMaxMonthlyReduction, Correction.ClearMinCashBuffer -> "node.clear_constraint"
         is Correction.RemoveRejection -> "node.remove_rejection"
+        is Correction.RejectMarketEstimate -> "node.reject_market_estimate"
     }
     is GraphChange.Explored -> when (c.hypothesis) {
         is Hypothesis.WhatIfInput -> "node.what_if_input"
         is Hypothesis.TryOption -> "node.try_option"
         is Hypothesis.ApplyCut -> "node.apply_cut"
+        is Hypothesis.UseMarketEstimate -> "node.use_market_estimate"
+        is Hypothesis.UseResearchedEstimate -> "node.use_researched_estimate"
     }
+    is GraphChange.MarketDataUpdated -> "node.market_data_updated"
 }

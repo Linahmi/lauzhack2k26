@@ -17,4 +17,4 @@ dependencyResolutionManagement {
     }
 }
 
-include(":core", ":composeApp", ":androidApp")
+include(":core", ":composeApp", ":androidApp", ":research-server")

@@ -65,6 +65,29 @@ fun stressTest(profile: FinancialProfile, scenario: Scenario, stress: StressSet,
         })))
     })
 
+/**
+ * Exact shortcut for the worst case of a [StressSet] without simulating every case.
+ * Stress only lowers income, so in any case month t's cash is the nominal cash minus
+ * reduction × (low months up to t). The worst case for month t therefore has
+ * min(k, t + 1) low months: worstByMonth[t] = nominal[t] − reduction × min(k, t + 1).
+ * Same validation as [stressTest]; results are identical (see FastPathEquivalenceTest).
+ */
+internal class StressProfile(val nominal: SimulationResult, val worstByMonth: List<Chf>) {
+    /** Equals stressTest(...).worstMinimumCash (opening balance included). */
+    val worstMinimum: Chf get() = worstByMonth.minOf { it }.coerceAtMost(nominal.openingCash)
+}
+
+internal fun stressProfile(profile: FinancialProfile, scenario: Scenario, stress: StressSet): StressProfile {
+    require(stress.maxLowIncomeMonths <= profile.horizonMonths) { "maxLowIncomeMonths exceeds horizon" }
+    val nominal = simulate(profile, scenario)
+    if (stress.maxLowIncomeMonths > 0) {
+        // Every month is low in some case; stressTest would reject a negative income there.
+        nominal.months.forEach { require(it.income >= stress.lowIncomeReduction) { "monthlyIncome cannot be negative" } }
+    }
+    val r = stress.lowIncomeReduction.rappen
+    return StressProfile(nominal, nominal.months.map { m -> m.closingCash - Chf(r * minOf(stress.maxLowIncomeMonths, m.month + 1)) })
+}
+
 /** A user-approved action: cut flexible spending by [monthly] from [startMonth] to the horizon end. */
 data class ExpenseReduction(val startMonth: Int, val monthly: Chf)
 
@@ -168,7 +191,7 @@ data class UnknownImpact(
 fun analyzeUnknown(profile: FinancialProfile, unknown: UnknownInput, stress: StressSet, floor: Chf): UnknownImpact {
     val values = generateSequence(unknown.low) { it + unknown.step }.takeWhile { it <= unknown.high }
     return UnknownImpact(unknown.name, unknown.low, unknown.high, unknown.step, floor,
-        values.map { v -> v to stressTest(profile, unknown.scenarioFor(v), stress, floor).worstMinimumCash }.toList())
+        values.map { v -> v to stressProfile(profile, unknown.scenarioFor(v), stress).worstMinimum }.toList())
 }
 
 /**

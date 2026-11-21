@@ -83,6 +83,56 @@ object SampleData {
         "My deposit is actually CHF 1,500",
     )
 
+    /**
+     * Market-grounded variant (docs/MARKET_DATA.md): fictional Alex moves out into a 1-room
+     * apartment in Lausanne on a NEW lease. Rent (net, excl. charges) and deposit are unknown.
+     * Fictional, ASSUMED: net income 2,600, other living costs 1,200, charges 150 (not market
+     * data: the FSO figures exclude charges). Only the rent benchmarks are sourced.
+     */
+    val alexLausanneOtherCosts = Chf.francs(1_200)
+    val alexLausanneCharges = Chf.francs(150)
+
+    fun alexMoveLausanne(rent: Chf, deposit: Chf) = Scenario(
+        name = "Move to a 1-room flat in Lausanne (rent ${rent.format()}, deposit ${deposit.format()})",
+        phases = listOf(Phase(0, 6, Chf.francs(2_600), alexLausanneOtherCosts + alexLausanneCharges + rent)),
+        oneOffCosts = listOf(
+            OneOffCost(0, Chf.francs(500), "Non-refundable moving fee"),
+            OneOffCost(3, Chf.francs(900), "Annual obligation"),
+        ),
+        transfers = listOf(AssetTransfer(0, deposit, "Refundable rental deposit")),
+    )
+
+    /** What "rent" means for market matching: Lausanne, 1 room, new lease, net rent, decided in 2026. */
+    val alexRentQuery = MarketQuery(
+        category = MarketCategory.HOUSING_NET_RENT,
+        unit = MarketUnit.CHF_PER_MONTH,
+        scope = GeoScope.LAUSANNE,
+        housing = HousingCharacteristics(rooms = 1, tenancy = TenancyDuration.UP_TO_ONE_YEAR, includesCharges = false),
+        asOfYear = 2026,
+    )
+
+    /** Rent searched over CHF 600–1,500 and deposit over CHF 1,300–1,700, both every CHF 10 (ASSUMED bounds). */
+    val alexLausanneSession = DecisionSession(
+        profile = alex,
+        baseline = alexStay,
+        inputs = listOf(
+            DecisionInput("rent", "question.rent", Chf.francs(600), Chf.francs(1_500), Chf.francs(10), market = alexRentQuery),
+            DecisionInput("deposit", "question.deposit", Chf.francs(1_300), Chf.francs(1_700), Chf.francs(10)),
+        ),
+        stress = alexStress,
+        floor = alexFloor,
+        repairCap = alexRepairCap,
+        options = listOf(DecisionOption("stay", "option.stay") { alexStay }),
+        decisionLabelKey = "option.move_lausanne",
+        marketData = MarketData.vaudHousing,
+    ) { v -> alexMoveLausanne(v.getValue("rent"), v.getValue("deposit")) }
+
+    /** Same fictional decision with NO market data loaded: the research flow starts from scratch. */
+    val alexResearchSession = alexLausanneSession.copy(marketData = null)
+
+    /** What Alex explicitly told us: moving out, Lausanne, a 1-room flat on a new lease, deciding in 2026. */
+    val alexContext = DecisionContext(DecisionKind.MOVE_OUT, GeoScope.LAUSANNE, 2026, alexRentQuery.housing)
+
     val moveAbroad = Scenario(
         name = "Move abroad",
         phases = listOf(Phase(0, 120, Chf.francs(3_700), Chf.francs(2_900))),

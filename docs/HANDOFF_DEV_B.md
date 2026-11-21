@@ -52,7 +52,7 @@ fun TwinScreen() {
     var pending by remember { mutableStateOf<TwinCommand.Correct?>(null) }
     val scope = rememberCoroutineScope()
 
-    LaunchedEffect(Unit) {                       // engine work off the UI thread (~<1 s per call)
+    LaunchedEffect(Unit) {                       // engine work off the UI thread (~10 ms warm, ~200 ms first call)
         val g = withContext(Dispatchers.Default) { startGraph(SampleData.alexSession) }
         graph = g
         briefing = withContext(Dispatchers.Default) { g.briefing() }
@@ -85,3 +85,16 @@ Demo phrases (same as `SampleData.alexDemoScript`): "Why does this plan fail?" �
 - Always show `disclosureKeys` and each insight's `limitationKeys`.
 - Never call `dispatch(..., confirmedByUser = true)` without the user tapping Confirm.
 - Need a different contract? Ask Developer A; don't edit `core/`.
+
+## Market grounding (branch `core/market-grounding`)
+
+`startGraph(SampleData.alexLausanneSession)` returns a rent input with sourced Lausanne/Vaud benchmarks.
+Read `briefing.marketChecks` / `graph.marketCheck("rent")`. Buttons map to `TwinCommand.ShowMarket`,
+`Hypothesis.UseMarketEstimate`, `Correction.AnswerInput` and `Correction.RejectMarketEstimate`.
+Full signatures, keys and display rules: `docs/MARKET_DATA.md`. `SampleData.alexSession` is unchanged.
+
+## Reality Check research (branch `core/research-agent`, stacked on `core/market-grounding`)
+
+`planResearch(SampleData.alexContext, session)` → `runResearch(request, provider, ResearchCache.snapshot)` →
+user taps "Use this figure" → `graph.explore(Hypothesis.UseResearchedEstimate(...))`. It works offline with
+`provider = null`. Signatures, display rules and the server setup are in `docs/RESEARCH_AGENT.md`.

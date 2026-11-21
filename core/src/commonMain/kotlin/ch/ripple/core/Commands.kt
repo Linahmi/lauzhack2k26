@@ -17,6 +17,8 @@ sealed interface TwinCommand {
     data object Explain : TwinCommand
     /** "Show me the alternative(s)." */
     data object ShowTradeOffs : TwinCommand
+    /** "Help me estimate" / "Why this estimate?": the Market Reality Check for one input. */
+    data class ShowMarket(val inputId: String) : TwinCommand
 }
 
 sealed interface CommandResult {
@@ -28,6 +30,7 @@ sealed interface CommandResult {
     /** The primary finding with the exact stress case and month behind it. */
     data class Explanation(val insight: FinancialInsight, val worstCase: StressWitness, val firstViolationMonth: Int?, val disclosureKeys: List<String>) : CommandResult
     data class TradeOffs(val options: List<TradeOff>) : CommandResult
+    data class Market(val check: MarketRealityCheck) : CommandResult
 }
 
 fun DecisionGraph.dispatch(command: TwinCommand, confirmedByUser: Boolean = false): CommandResult = when (command) {
@@ -40,6 +43,7 @@ fun DecisionGraph.dispatch(command: TwinCommand, confirmedByUser: Boolean = fals
         CommandResult.Explanation(b.primary, b.evidence.worstStressTest.worst, b.evidence.worstStressTest.firstViolationMonth, b.disclosureKeys)
     }
     TwinCommand.ShowTradeOffs -> CommandResult.TradeOffs(tradeOffs())
+    is TwinCommand.ShowMarket -> CommandResult.Market(requireNotNull(marketCheck(command.inputId)) { "no market link for '${command.inputId}'" })
 }
 
 /**
@@ -61,7 +65,15 @@ fun DecisionGraph.parseCommand(text: String): TwinCommand? {
     val amount = parseAmount(t)
     val input = s.inputs.firstOrNull { it.id in t }
     val cannotCut = Regex("""\b(can't|cannot|can not|won't|unable to)\s+(reduce|cut|lower)""").containsMatchIn(t)
+    val marketInput = (input?.takeIf { it.market != null } ?: s.inputs.firstOrNull { it.market != null })
+        ?.takeIf { amount == null && ("estimate" in t || "market" in t || "typical" in t) }
     return when {
+        // "Try the market rent" -> what-if with the best offered estimate; "Help me estimate" / "Why this estimate?" -> show it.
+        marketInput != null -> {
+            val offered = marketCheck(marketInput.id)?.takeIf { it.offersEstimate }?.benchmarks?.firstOrNull()
+            if (("try" in t || "use" in t) && offered != null) TwinCommand.Explore(Hypothesis.UseMarketEstimate(marketInput.id, offered.estimate.id))
+            else TwinCommand.ShowMarket(marketInput.id)
+        }
         t.startsWith("why") || " why " in " $t " -> TwinCommand.Explain
         "show" in t && ("alternative" in t || "option" in t) -> TwinCommand.ShowTradeOffs
         "what if" in t -> s.options.firstOrNull { it.id in t }?.let { TwinCommand.Explore(Hypothesis.TryOption(it.id)) }

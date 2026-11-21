@@ -13,6 +13,7 @@ kotlin {
         withHostTest {} // run commonTest on the Android target too
     }
     sourceSets {
+        commonMain.dependencies { implementation(libs.kotlinx.serialization.json) } // JSON tree API only (research wire format), no plugin
         commonTest.dependencies { implementation(kotlin("test")) }
         jvmTest.dependencies { implementation(libs.kotlinx.serialization.json) } // fixture JSON reader, tests only
     }

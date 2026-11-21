@@ -74,3 +74,55 @@ One entry per substantial feature (see the challenge gate in [CLAUDE.md](../CLAU
   `TwinCommand` through the same gate. No LLM dependency added.
 - **Feasibility:** 9 new tests incl. a scripted end-to-end demo; mutation checks (dropping the
   confirmation gate or the planned cut) each fail 2 tests.
+
+## 2026-11-21 — Exact fast path for brief() (performance)
+
+- **Why:** measured on the Android emulator (ART), `brief()` with the deposit unknown took
+  0.8–3 s warm and up to ~10 s on the first call; too slow for a live demo.
+- **What:** stress only lowers income, so month t's worst case over all stress cases is
+  nominal[t] − reduction × min(k, t + 1), and a cut r from month s adds r × (t − s + 1). Both are
+  exact integer formulas, so brief() screens all input values and computes the minimal cut
+  directly, running the full 22-case stressTest only for the worst combination (the witness).
+- **Proof:** `FastPathEquivalenceTest` compares against the original brute force on 96
+  configurations (buffers, stress budgets 0–3, stay/move, planned cut, personal limit) and on
+  the UBS Alexia scenarios; an off-by-one in the formula is caught only by this test.
+- **Result (warm / first call):** JVM 97 → 8 ms / 455 → 229 ms; Android emulator ART
+  0.8–3.2 s → 12–13 ms / 1.4–9.9 s → 180–193 ms. Same answers, all 132 tests pass.
+- **Unchanged:** public `stressTest`, `findMinimalMonthlyRepair`, `findLatestFeasibleStart` keep
+  the brute-force algorithm (they are the reference). `RepairOption.candidatesChecked` now
+  counts grid values covered (all smaller values proven insufficient), same numbers as before.
+
+## 2026-11-21 — Market-grounded rent benchmarks (core)
+
+- **Problem and beneficiary:** someone moving out often does not yet know their future rent. A
+  plausible, sourced reference helps them explore the decision without inventing a number.
+- **UBS:** a sourced external assumption is kept separate from user facts and computed results
+  (`Provenance.EXTERNAL_SOURCE`, separate what-if branch). The engine checks whether the assumption
+  changes the cash-buffer verdict (threshold verified by stress test). Mismatches are claimed only
+  against fully comparable figures. Details: MARKET_DATA.md.
+- **IMC:** this lowers the barrier for users without a lease or a budget yet ("Help me estimate").
+  It is a hypothesis until a nonprofit validates it. No impact is claimed.
+- **JetBrains:** all matching, checks and revisions live in `core/commonMain`. The same 17 tests
+  pass on JVM and Android host.
+- **Demo proof:** Alex Lausanne. Rent unknown → try the FSO figure CHF 899 → passes → "still need the
+  real lease: breaks above CHF 950" → enter CHF 1,050 → repairable. Fallback: `MarketTest.endToEndAlexLausanne`.
+- **Feasibility:** owner Developer A. No backend, no scraping, a static snapshot. Cut: salary and tax
+  estimators, listing data, live updates. Open item: Statistique Vaud reuse terms (FSO figures are OPEN-BY).
+
+## 2026-11-21 — Reality Check research agent (core + research-server)
+
+- **Problem and beneficiary:** people deciding without complete figures (here: future rent)
+  can ask Ripple to look up credible public evidence instead of guessing.
+- **UBS:** external figures enter only as user-confirmed what-ifs, labelled `EXTERNAL_SOURCE`.
+  Every figure must pass deterministic validation against the retrieved source text. The engine
+  recomputes, and the graph keeps the evidence per branch. Cached research is disclosed as
+  cached. Details: RESEARCH_AGENT.md.
+- **IMC:** no bank data, no personal data sent (only category, area and year). It works offline
+  from the cache. This is a hypothesis until a nonprofit validates it.
+- **JetBrains:** planning, validation, fallback and the wire format are in `core/commonMain`
+  (tests on JVM and Android host). The key-holding proxy is a separate JVM module, and the APK
+  contains no SDK or key.
+- **Demo proof:** Alex: rent unknown → research (cached FSO 899 ± 16, verified) → try it →
+  passes → enter the real offer → repairable. Fallback: `ResearchTest.endToEndDecisionToUpdatedGraph`.
+- **Feasibility:** owner Developer A. One provider (Anthropic: LLM + web search/fetch). Cut:
+  multi-agent orchestration, crawling, more category models. Blocker: an API key is needed for the live Claude run.

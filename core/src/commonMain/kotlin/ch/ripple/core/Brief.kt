@@ -26,7 +26,15 @@ sealed interface InputState {
 }
 
 /** An input of the decision. [low]..[high] (every [step]) are the bounds searched while it is Unknown. */
-data class DecisionInput(val id: String, val questionKey: String, val low: Chf, val high: Chf, val step: Chf) {
+data class DecisionInput(
+    val id: String,
+    val questionKey: String,
+    val low: Chf,
+    val high: Chf,
+    val step: Chf,
+    /** What this input means in market terms (enables market estimates for it); null = none. */
+    val market: MarketQuery? = null,
+) {
     init {
         require(!low.isNegative && low <= high) { "need 0 <= low <= high" }
         require(step.rappen > 0 && (high - low).rappen % step.rappen == 0L) { "bounds must be a whole number of steps" }
@@ -60,6 +68,12 @@ data class DecisionSession(
     val plannedCut: ExpenseReduction? = null,
     /** Label of the main decision (e.g. "option.move"); alternatives carry their own. */
     val decisionLabelKey: String = "option.main",
+    /** Versioned market estimates available to this session (external context, never facts). */
+    val marketData: MarketSnapshot? = null,
+    /** inputId -> estimateId tried as a what-if; the value itself is in [hypotheticalValues]. */
+    val marketAssumptions: Map<String, String> = emptyMap(),
+    /** What the user did with each estimate (tried / replaced by own value / rejected). */
+    val marketReviews: Map<String, MarketReview> = emptyMap(),
     /** Builds the main decision scenario from concrete input values. */
     val decision: (Map<String, Chf>) -> Scenario,
 ) {
@@ -69,6 +83,10 @@ data class DecisionSession(
         require(hypotheticalValues.keys.all { k -> inputs.any { it.id == k } }) { "what-if for undeclared inputs" }
         require(activeOptionId == null || options.any { it.id == activeOptionId }) { "unknown option '$activeOptionId'" }
         plannedCut?.let { require(it.startMonth in 0 until profile.horizonMonths && !it.monthly.isNegative) { "invalid planned cut" } }
+        marketAssumptions.forEach { (inputId, estimateId) ->
+            val e = requireNotNull(marketData?.estimate(estimateId)) { "unknown market estimate '$estimateId'" }
+            require(hypotheticalValues[inputId] == e.value.point) { "market what-if for '$inputId' must use the estimate's value" }
+        }
     }
 
     /** True if this state contains any what-if (not the user's confirmed situation). */
@@ -96,7 +114,15 @@ fun DecisionSession.answer(inputId: String, value: InputState): DecisionSession 
     if (value is InputState.Range) {
         require((value.high - value.low).rappen % input.step.rappen == 0L) { "range must be a whole number of ${input.step} steps" }
     }
-    return copy(values = values + (inputId to value), askedInputIds = askedInputIds + inputId)
+    // The user's own value replaces a market what-if for this input (never the other way round).
+    val replacedEstimate = marketAssumptions[inputId]?.takeIf { value !is InputState.Unknown }
+    return copy(
+        values = values + (inputId to value),
+        askedInputIds = askedInputIds + inputId,
+        hypotheticalValues = if (replacedEstimate != null) hypotheticalValues - inputId else hypotheticalValues,
+        marketAssumptions = if (replacedEstimate != null) marketAssumptions - inputId else marketAssumptions,
+        marketReviews = replacedEstimate?.let { marketReviews + (it to MarketReview.REPLACED_BY_USER_VALUE) } ?: marketReviews,
+    )
 }
 
 fun DecisionSession.markSeen(insightIds: Collection<String>): DecisionSession =
@@ -166,10 +192,13 @@ fun brief(session: DecisionSession): Briefing = with(session) {
         "$combinationCount input combinations exceed $MAX_VALUE_COMBINATIONS; use coarser steps or answer an input"
     }
     val combos = inputs.fold(listOf(emptyMap<String, Chf>())) { acc, i -> acc.flatMap { m -> grids.getValue(i.id).map { m + (i.id to it) } } }
-    val tests = combos.map { it to stressTest(profile, decision(it), stress, floor) }
-    val (worstInputs, worst) = tests.minBy { it.second.worstMinimumCash }
-    val allPass = tests.all { it.second.passes }
-    val nonePass = tests.none { it.second.passes }
+    // Exact per-month worst case for each combination (no per-case simulation), then the full
+    // 22-case stressTest only for the worst combination, whose witness the UI shows.
+    val profiles = combos.map { it to stressProfile(profile, decision(it), stress) }
+    val worstInputs = profiles.minBy { it.second.worstMinimum }.first
+    val worst = stressTest(profile, decision(worstInputs), stress, floor)
+    val allPass = profiles.all { it.second.worstMinimum >= floor }
+    val nonePass = profiles.none { it.second.worstMinimum >= floor }
 
     // 2. Skeptic: which uncertain input could change the verdict (others at the worst case).
     val uncertain = inputs.filter { grids.getValue(it.id).size > 1 }
@@ -180,7 +209,7 @@ fun brief(session: DecisionSession): Briefing = with(session) {
 
     // 3. Explorer: repairs that hold for every combination (exact minimum on the CHF grid).
     val repairs = if (allPass) emptyList() else (0 until profile.horizonMonths).map { start ->
-        repairAcrossAll(session, decision(worstInputs), combos.map(decision), start)
+        repairAcrossAll(session, profiles.map { it.second }, start)
     }
     val firstRepair = repairs.firstOrNull { it.feasible }
     val firstFinancialRepair = repairs.firstOrNull { it.financiallyFeasible }
@@ -196,9 +225,15 @@ fun brief(session: DecisionSession): Briefing = with(session) {
         }
     }
 
+    // 5a. Market Reality Check for every market-linked input (computed at the same worst case).
+    val marketChecks = inputs.mapNotNull { marketCheck(it, worstInputs) }
+
     val evidence = BriefingEvidence(worstInputs, combos.size, stress.cases(profile.horizonMonths).size, worst, allPass, nonePass, impacts, repairs)
     val inputFacts = inputs.map { i ->
-        hypotheticalValues[i.id]?.let { ExplanationFact("input:${i.id}", FactValue.Money(it), Provenance.ASSUMED, "hypothesis:${i.id}") }
+        hypotheticalValues[i.id]?.let { v ->
+            marketAssumptions[i.id]?.let { ExplanationFact("input:${i.id}", FactValue.Money(v), Provenance.EXTERNAL_SOURCE, "market:$it") }
+                ?: ExplanationFact("input:${i.id}", FactValue.Money(v), Provenance.ASSUMED, "hypothesis:${i.id}")
+        }
             ?: inputFact(i, state(i.id))
     }
     val floorProvenance = if (constraints.minCashBuffer != null) Provenance.USER_STATED else Provenance.ASSUMED
@@ -219,6 +254,10 @@ fun brief(session: DecisionSession): Briefing = with(session) {
         }
         add(UserAction("explore:baseline", ActionKind.EXPLORE_ALTERNATIVE, "action.compare_baseline", "baseline"))
         inputs.forEach { add(UserAction("correct:${it.id}", ActionKind.CORRECT_ASSUMPTION, "action.correct_input")) }
+        marketChecks.forEach { c ->
+            if (c.offersEstimate) add(UserAction("market:try:${c.inputId}", ActionKind.EXPLORE_ALTERNATIVE, "action.try_market_assumption"))
+            if (c.benchmarks.isNotEmpty()) add(UserAction("market:why:${c.inputId}", ActionKind.INSPECT, "action.why_this_estimate"))
+        }
         add(UserAction("inspect", ActionKind.INSPECT, "action.inspect"))
     }
     val actionIds = actions.map { it.id }
@@ -259,6 +298,16 @@ fun brief(session: DecisionSession): Briefing = with(session) {
                 "insight.unknown_changes_decision", unknownFacts(u, session),
                 listOf("decision-worst"), listOf(u.name), listOfNotNull(if (u.name in askableIds) "answer:${u.name}" else null, "correct:${u.name}"),
                 listOf(Keys.LIMIT_QUESTION_HEURISTIC), listOf(RankReason.COULD_CHANGE_WITH_MISSING_ANSWER, RankReason.ACTIONABLE)))
+        }
+        // Market context: only for inputs whose value could change the verdict (computed).
+        marketChecks.filter { it.decisionSensitive }.forEach { c ->
+            add(FinancialInsight("market:${c.inputId}", InsightType.MARKET_SENSITIVE_ASSUMPTION, InsightSeverity.INFO,
+                "insight.market_check.${c.status.name.lowercase()}", c.facts,
+                listOf("decision-worst"), listOf(c.inputId),
+                listOfNotNull("market:try:${c.inputId}".takeIf { c.offersEstimate }, "market:why:${c.inputId}".takeIf { c.benchmarks.isNotEmpty() },
+                    "answer:${c.inputId}".takeIf { c.inputId in askableIds }, "correct:${c.inputId}"),
+                c.limitationKeys + Keys.LIMIT_NO_PROBABILITIES,
+                listOfNotNull(RankReason.COULD_CHANGE_WITH_MISSING_ANSWER.takeIf { c.needsExactValue }, RankReason.ACTIONABLE)))
         }
         if (!allPass) {
             if (firstRepair != null) {
@@ -315,7 +364,8 @@ fun brief(session: DecisionSession): Briefing = with(session) {
         primary = ranked.first(),
         followUp = followUpInput?.let { i ->
             FollowUpQuestion("q:${i.id}", i.id, i.questionKey, AnswerSpec.MoneyRange(i.low, i.high, i.step),
-                unknownFacts(impacts.first { it.name == i.id }, session))
+                unknownFacts(impacts.first { it.name == i.id }, session),
+                marketEstimateIds = marketChecks.firstOrNull { it.inputId == i.id && it.offersEstimate }?.benchmarks?.map { it.estimate.id }.orEmpty())
         },
         actions = actions,
         moreInsights = ranked.drop(1),
@@ -323,20 +373,27 @@ fun brief(session: DecisionSession): Briefing = with(session) {
             Keys.DISCLOSURE_FICTIONAL, Keys.DISCLOSURE_HYPOTHETICAL, Keys.DISCLOSURE_TESTED_CASES, Keys.DISCLOSURE_CASH_ONLY,
             Keys.DISCLOSURE_UNKNOWN_BOUNDED.takeIf { uncertain.isNotEmpty() },
             Keys.DISCLOSURE_WHAT_IF.takeIf { isHypothetical },
+            MarketKeys.DISCLOSURE_MARKET_ASSUMPTION.takeIf { marketAssumptions.isNotEmpty() },
+            MarketKeys.DISCLOSURE_CACHED_RESEARCH.takeIf {
+                marketAssumptions.values.any { marketData?.estimate(it)?.retrieval == RetrievalMode.CACHED_RESEARCH }
+            },
         ),
         scenarios = scenarios,
         evidence = evidence,
+        marketChecks = marketChecks,
     )
 }
 
 private fun tier(t: InsightType) = when (t) {
     InsightType.LIQUIDITY_BREACH, InsightType.FRAGILE_PLAN, InsightType.ROBUST_CONCLUSION -> 0
     InsightType.DECISION_CHANGING_UNKNOWN -> 1
-    InsightType.FEASIBLE_REPAIR, InsightType.NO_ACCEPTABLE_REPAIR, InsightType.NO_REPAIR_IN_SCOPE -> 2
-    InsightType.ACTION_DEADLINE -> 3
+    // Market context sits after the Skeptic question and never above the safety verdict (tier 0).
+    InsightType.MARKET_SENSITIVE_ASSUMPTION -> 2
+    InsightType.FEASIBLE_REPAIR, InsightType.NO_ACCEPTABLE_REPAIR, InsightType.NO_REPAIR_IN_SCOPE -> 3
+    InsightType.ACTION_DEADLINE -> 4
 }
 
-private fun DecisionInput.candidates(state: InputState): List<Chf> = when (state) {
+internal fun DecisionInput.candidates(state: InputState): List<Chf> = when (state) {
     is InputState.Exact -> listOf(state.value)
     is InputState.Range -> generateSequence(state.low) { it + step }.takeWhile { it <= state.high }.toList()
     InputState.Unknown -> generateSequence(low) { it + step }.takeWhile { it <= high }.toList()
@@ -345,7 +402,7 @@ private fun DecisionInput.candidates(state: InputState): List<Chf> = when (state
 private fun fact(key: String, value: FactValue, ref: String, provenance: Provenance = Provenance.COMPUTED) =
     ExplanationFact(key, value, provenance, ref)
 
-private fun inputFact(i: DecisionInput, s: InputState) = when (s) {
+internal fun inputFact(i: DecisionInput, s: InputState) = when (s) {
     is InputState.Exact -> ExplanationFact("input:${i.id}", FactValue.Money(s.value), s.provenance, "input:${i.id}")
     is InputState.Range -> ExplanationFact("input:${i.id}", FactValue.MoneyRange(s.low, s.high), s.provenance, "input:${i.id}")
     InputState.Unknown -> ExplanationFact("input:${i.id}", FactValue.MoneyRange(i.low, i.high), s.provenance, "input:${i.id}")
@@ -359,33 +416,47 @@ private fun unknownFacts(u: UnknownImpact, s: DecisionSession) = listOfNotNull(
 )
 
 /**
- * For [start]: (1) the smallest monthly cut that passes the stress set for EVERY scenario
- * (financial minimum, action-space cap only), then (2) the smallest such cut the user's
- * personal constraints allow. Below the worst scenario's own minimum nothing can pass (it is
- * one of the scenarios), so both searches start there and check every candidate against all.
+ * For [start]: (1) the smallest monthly cut on the CHF grid that passes the stress set for EVERY
+ * combination (financial minimum, action-space cap only), then (2) the smallest such cut the
+ * user's personal constraints allow.
+ *
+ * Exact, no search: a cut r from [start] adds r × (t − start + 1) to month t in every stress
+ * case, so month t needs r ≥ (floor − worstByMonth[t]) / (t − start + 1), rounded up to the grid;
+ * months before [start] (and the opening balance) must already be at the floor. Cash only grows
+ * with r, so every larger grid value passes too — (2) is the first one no constraint excludes.
+ * [RepairOption.candidatesChecked] = grid values covered (0..answer), all smaller ones proven short.
  */
-private fun repairAcrossAll(s: DecisionSession, worstScenario: Scenario, all: List<Scenario>, start: Int): RepairOption {
+private fun repairAcrossAll(s: DecisionSession, profiles: List<StressProfile>, start: Int): RepairOption {
     val floor = s.effectiveFloor
-    fun passesAll(r: Chf) = all.all {
-        stressTest(s.profile, it.withExpenseReduction(s.profile.horizonMonths, ExpenseReduction(start, r)), s.stress, floor).passes
+    val step = s.repairStep.rappen
+    val gridCount = { r: Long -> (r / step + 1).toInt() }
+    var need = 0L
+    for (p in profiles) {
+        if (p.nominal.openingCash < floor) return RepairOption(start, null, gridCount(s.repairCap.rappen), null)
+        p.worstByMonth.forEachIndexed { t, w ->
+            if (w < floor) {
+                val months = t - start + 1
+                if (months <= 0) return RepairOption(start, null, gridCount(s.repairCap.rappen), null)
+                need = maxOf(need, ceilDiv((floor - w).rappen, months.toLong()))
+            }
+        }
     }
-    val first = findMinimalMonthlyRepair(s.profile, worstScenario, s.stress, floor, start, s.repairCap, s.repairStep)
-    var checked = first.candidatesChecked
-    var r = first.minimalMonthlyReduction ?: return RepairOption(start, null, checked, null)
-    var financial: Chf? = null
-    while (r <= s.repairCap) {
-        if (r != first.minimalMonthlyReduction) checked++
-        if (passesAll(r)) { financial = r; break }
-        r += s.repairStep
-    }
-    if (financial == null) return RepairOption(start, null, checked, null)
+    val r = ceilDiv(need, step) * step
+    if (r > s.repairCap.rappen) return RepairOption(start, null, gridCount(s.repairCap.rappen), null)
+    val financial = Chf(r)
+    // A cut larger than a month's expenses is not a valid scenario (simulate() rejects it).
+    val minExpenses = profiles.minOf { p -> p.nominal.months.filter { it.month >= start }.minOf { it.expenses } }
 
-    var a: Chf = financial
+    var a = financial
     while (a <= s.repairCap) {
-        if (s.constraints.excludes(start, a).isEmpty() && (a == financial || passesAll(a).also { checked++ })) {
-            return RepairOption(start, a, checked, financial)
+        if (s.constraints.excludes(start, a).isEmpty()) {
+            require(a <= minExpenses) { "monthlyExpenses cannot be negative" }
+            return RepairOption(start, a, gridCount(r), financial)
         }
         a += s.repairStep
     }
-    return RepairOption(start, null, checked, financial, s.constraints.excludes(start, financial))
+    require(financial <= minExpenses) { "monthlyExpenses cannot be negative" }
+    return RepairOption(start, null, gridCount(r), financial, s.constraints.excludes(start, financial))
 }
+
+private fun ceilDiv(x: Long, d: Long) = if (x <= 0) 0L else (x + d - 1) / d
