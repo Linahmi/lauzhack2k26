@@ -13,7 +13,7 @@ Done: KMP project (Android + JVM desktop), deterministic cash engine in `commonM
 minimal shared UI using real engine output.
 
 Open acceptance criteria (JetBrains is mandatory, UBS gate):
-- [ ] Android app **actually launched** on device/emulator; screenshot/recording in `docs/evidence/`.
+- [x] Android app **actually launched** on emulator `Pixel_10a_B` (Android 37.1), 2026-11-21: `docs/evidence/android-m1-emulator.png`, no crash in logcat.
 - [ ] Desktop app **visually checked**; screenshot in `docs/evidence/`.
 - [ ] UI labels: amounts are **net** monthly income, **cash only — not net worth**, fictional,
       CHF, 120-month horizon.
@@ -30,7 +30,7 @@ Acceptance:
 - [x] All fixture values reproduced by the engine and by an independent brute force.
 - [x] Deposit modelled as restricted asset transfer; net worth unaffected by deposit size.
 - [ ] Minimal Break My Plan screen on Android and desktop using real outputs (Developer B).
-- [ ] Android runtime proof (emulator failed to boot 2026-11-21).
+- [x] Android runtime proof (M1 screen, emulator, 2026-11-21). Re-capture once the Break My Plan screen exists.
 - [ ] Explanation model (formula + input IDs per result) for the inspector (Developer A).
 
 ## M2b — Guided insight (NEXT milestone)
