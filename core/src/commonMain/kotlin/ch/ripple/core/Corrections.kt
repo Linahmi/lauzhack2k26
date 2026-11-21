@@ -56,6 +56,8 @@ sealed interface Correction {
     data object ClearMaxMonthlyReduction : Correction
     data object ClearMinCashBuffer : Correction
     data class RemoveRejection(val rejectionId: String) : Correction
+    /** "This estimate doesn't apply to me": never offered again; any what-if using it is removed. */
+    data class RejectMarketEstimate(val estimateId: String) : Correction
 }
 
 sealed interface Hypothesis {
@@ -65,6 +67,8 @@ sealed interface Hypothesis {
     data class TryOption(val optionId: String) : Hypothesis
     /** Try a spending cut of a given size and timing in this branch (e.g. CHF 100 from month 4). */
     data class ApplyCut(val cut: ExpenseReduction) : Hypothesis
+    /** "Try this market assumption": the estimate's value for [inputId], labelled EXTERNAL_SOURCE. */
+    data class UseMarketEstimate(val inputId: String, val estimateId: String) : Hypothesis
 }
 
 fun DecisionSession.apply(c: Correction): DecisionSession = when (c) {
@@ -89,6 +93,15 @@ fun DecisionSession.apply(c: Correction): DecisionSession = when (c) {
         require(constraints.rejections.any { it.id == c.rejectionId }) { "no rejection '${c.rejectionId}'" }
         copy(constraints = constraints.copy(rejections = constraints.rejections.filterNot { it.id == c.rejectionId }))
     }
+    is Correction.RejectMarketEstimate -> {
+        requireNotNull(marketData?.estimate(c.estimateId)) { "unknown market estimate '${c.estimateId}'" }
+        val using = marketAssumptions.filterValues { it == c.estimateId }.keys
+        copy(
+            marketReviews = marketReviews + (c.estimateId to MarketReview.REJECTED),
+            marketAssumptions = marketAssumptions - using,
+            hypotheticalValues = hypotheticalValues - using,
+        )
+    }
 }
 
 fun DecisionSession.apply(h: Hypothesis): DecisionSession = when (h) {
@@ -99,4 +112,17 @@ fun DecisionSession.apply(h: Hypothesis): DecisionSession = when (h) {
     }
     is Hypothesis.TryOption -> copy(activeOptionId = h.optionId) // validated in DecisionSession.init
     is Hypothesis.ApplyCut -> copy(plannedCut = h.cut)           // validated in DecisionSession.init
+    is Hypothesis.UseMarketEstimate -> {
+        val input = requireNotNull(inputs.firstOrNull { it.id == h.inputId }) { "unknown input '${h.inputId}'" }
+        val query = requireNotNull(input.market) { "input '${h.inputId}' has no market link" }
+        val e = requireNotNull(marketData?.estimate(h.estimateId)) { "unknown market estimate '${h.estimateId}'" }
+        require(state(h.inputId) !is InputState.Exact) { "'${h.inputId}' is user-confirmed; a market estimate never replaces it" }
+        require(marketReviews[h.estimateId] != MarketReview.REJECTED) { "estimate '${h.estimateId}' was rejected" }
+        require(assess(query, e).relevant) { "estimate '${h.estimateId}' is not comparable to '${h.inputId}'" }
+        copy(
+            hypotheticalValues = hypotheticalValues + (h.inputId to e.value.point),
+            marketAssumptions = marketAssumptions + (h.inputId to h.estimateId),
+            marketReviews = marketReviews + (h.estimateId to MarketReview.TRIED_AS_ASSUMPTION),
+        )
+    }
 }

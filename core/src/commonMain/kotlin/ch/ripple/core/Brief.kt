@@ -26,7 +26,15 @@ sealed interface InputState {
 }
 
 /** An input of the decision. [low]..[high] (every [step]) are the bounds searched while it is Unknown. */
-data class DecisionInput(val id: String, val questionKey: String, val low: Chf, val high: Chf, val step: Chf) {
+data class DecisionInput(
+    val id: String,
+    val questionKey: String,
+    val low: Chf,
+    val high: Chf,
+    val step: Chf,
+    /** What this input means in market terms (enables market estimates for it); null = none. */
+    val market: MarketQuery? = null,
+) {
     init {
         require(!low.isNegative && low <= high) { "need 0 <= low <= high" }
         require(step.rappen > 0 && (high - low).rappen % step.rappen == 0L) { "bounds must be a whole number of steps" }
@@ -60,6 +68,12 @@ data class DecisionSession(
     val plannedCut: ExpenseReduction? = null,
     /** Label of the main decision (e.g. "option.move"); alternatives carry their own. */
     val decisionLabelKey: String = "option.main",
+    /** Versioned market estimates available to this session (external context, never facts). */
+    val marketData: MarketSnapshot? = null,
+    /** inputId -> estimateId tried as a what-if; the value itself is in [hypotheticalValues]. */
+    val marketAssumptions: Map<String, String> = emptyMap(),
+    /** What the user did with each estimate (tried / replaced by own value / rejected). */
+    val marketReviews: Map<String, MarketReview> = emptyMap(),
     /** Builds the main decision scenario from concrete input values. */
     val decision: (Map<String, Chf>) -> Scenario,
 ) {
@@ -69,6 +83,10 @@ data class DecisionSession(
         require(hypotheticalValues.keys.all { k -> inputs.any { it.id == k } }) { "what-if for undeclared inputs" }
         require(activeOptionId == null || options.any { it.id == activeOptionId }) { "unknown option '$activeOptionId'" }
         plannedCut?.let { require(it.startMonth in 0 until profile.horizonMonths && !it.monthly.isNegative) { "invalid planned cut" } }
+        marketAssumptions.forEach { (inputId, estimateId) ->
+            val e = requireNotNull(marketData?.estimate(estimateId)) { "unknown market estimate '$estimateId'" }
+            require(hypotheticalValues[inputId] == e.value.point) { "market what-if for '$inputId' must use the estimate's value" }
+        }
     }
 
     /** True if this state contains any what-if (not the user's confirmed situation). */
@@ -96,7 +114,15 @@ fun DecisionSession.answer(inputId: String, value: InputState): DecisionSession 
     if (value is InputState.Range) {
         require((value.high - value.low).rappen % input.step.rappen == 0L) { "range must be a whole number of ${input.step} steps" }
     }
-    return copy(values = values + (inputId to value), askedInputIds = askedInputIds + inputId)
+    // The user's own value replaces a market what-if for this input (never the other way round).
+    val replacedEstimate = marketAssumptions[inputId]?.takeIf { value !is InputState.Unknown }
+    return copy(
+        values = values + (inputId to value),
+        askedInputIds = askedInputIds + inputId,
+        hypotheticalValues = if (replacedEstimate != null) hypotheticalValues - inputId else hypotheticalValues,
+        marketAssumptions = if (replacedEstimate != null) marketAssumptions - inputId else marketAssumptions,
+        marketReviews = replacedEstimate?.let { marketReviews + (it to MarketReview.REPLACED_BY_USER_VALUE) } ?: marketReviews,
+    )
 }
 
 fun DecisionSession.markSeen(insightIds: Collection<String>): DecisionSession =
@@ -199,9 +225,15 @@ fun brief(session: DecisionSession): Briefing = with(session) {
         }
     }
 
+    // 5a. Market Reality Check for every market-linked input (computed at the same worst case).
+    val marketChecks = inputs.mapNotNull { marketCheck(it, worstInputs) }
+
     val evidence = BriefingEvidence(worstInputs, combos.size, stress.cases(profile.horizonMonths).size, worst, allPass, nonePass, impacts, repairs)
     val inputFacts = inputs.map { i ->
-        hypotheticalValues[i.id]?.let { ExplanationFact("input:${i.id}", FactValue.Money(it), Provenance.ASSUMED, "hypothesis:${i.id}") }
+        hypotheticalValues[i.id]?.let { v ->
+            marketAssumptions[i.id]?.let { ExplanationFact("input:${i.id}", FactValue.Money(v), Provenance.EXTERNAL_SOURCE, "market:$it") }
+                ?: ExplanationFact("input:${i.id}", FactValue.Money(v), Provenance.ASSUMED, "hypothesis:${i.id}")
+        }
             ?: inputFact(i, state(i.id))
     }
     val floorProvenance = if (constraints.minCashBuffer != null) Provenance.USER_STATED else Provenance.ASSUMED
@@ -222,6 +254,10 @@ fun brief(session: DecisionSession): Briefing = with(session) {
         }
         add(UserAction("explore:baseline", ActionKind.EXPLORE_ALTERNATIVE, "action.compare_baseline", "baseline"))
         inputs.forEach { add(UserAction("correct:${it.id}", ActionKind.CORRECT_ASSUMPTION, "action.correct_input")) }
+        marketChecks.forEach { c ->
+            if (c.offersEstimate) add(UserAction("market:try:${c.inputId}", ActionKind.EXPLORE_ALTERNATIVE, "action.try_market_assumption"))
+            if (c.benchmarks.isNotEmpty()) add(UserAction("market:why:${c.inputId}", ActionKind.INSPECT, "action.why_this_estimate"))
+        }
         add(UserAction("inspect", ActionKind.INSPECT, "action.inspect"))
     }
     val actionIds = actions.map { it.id }
@@ -262,6 +298,16 @@ fun brief(session: DecisionSession): Briefing = with(session) {
                 "insight.unknown_changes_decision", unknownFacts(u, session),
                 listOf("decision-worst"), listOf(u.name), listOfNotNull(if (u.name in askableIds) "answer:${u.name}" else null, "correct:${u.name}"),
                 listOf(Keys.LIMIT_QUESTION_HEURISTIC), listOf(RankReason.COULD_CHANGE_WITH_MISSING_ANSWER, RankReason.ACTIONABLE)))
+        }
+        // Market context: only for inputs whose value could change the verdict (computed).
+        marketChecks.filter { it.decisionSensitive }.forEach { c ->
+            add(FinancialInsight("market:${c.inputId}", InsightType.MARKET_SENSITIVE_ASSUMPTION, InsightSeverity.INFO,
+                "insight.market_check.${c.status.name.lowercase()}", c.facts,
+                listOf("decision-worst"), listOf(c.inputId),
+                listOfNotNull("market:try:${c.inputId}".takeIf { c.offersEstimate }, "market:why:${c.inputId}".takeIf { c.benchmarks.isNotEmpty() },
+                    "answer:${c.inputId}".takeIf { c.inputId in askableIds }, "correct:${c.inputId}"),
+                c.limitationKeys + Keys.LIMIT_NO_PROBABILITIES,
+                listOfNotNull(RankReason.COULD_CHANGE_WITH_MISSING_ANSWER.takeIf { c.needsExactValue }, RankReason.ACTIONABLE)))
         }
         if (!allPass) {
             if (firstRepair != null) {
@@ -318,7 +364,8 @@ fun brief(session: DecisionSession): Briefing = with(session) {
         primary = ranked.first(),
         followUp = followUpInput?.let { i ->
             FollowUpQuestion("q:${i.id}", i.id, i.questionKey, AnswerSpec.MoneyRange(i.low, i.high, i.step),
-                unknownFacts(impacts.first { it.name == i.id }, session))
+                unknownFacts(impacts.first { it.name == i.id }, session),
+                marketEstimateIds = marketChecks.firstOrNull { it.inputId == i.id && it.offersEstimate }?.benchmarks?.map { it.estimate.id }.orEmpty())
         },
         actions = actions,
         moreInsights = ranked.drop(1),
@@ -326,20 +373,24 @@ fun brief(session: DecisionSession): Briefing = with(session) {
             Keys.DISCLOSURE_FICTIONAL, Keys.DISCLOSURE_HYPOTHETICAL, Keys.DISCLOSURE_TESTED_CASES, Keys.DISCLOSURE_CASH_ONLY,
             Keys.DISCLOSURE_UNKNOWN_BOUNDED.takeIf { uncertain.isNotEmpty() },
             Keys.DISCLOSURE_WHAT_IF.takeIf { isHypothetical },
+            MarketKeys.DISCLOSURE_MARKET_ASSUMPTION.takeIf { marketAssumptions.isNotEmpty() },
         ),
         scenarios = scenarios,
         evidence = evidence,
+        marketChecks = marketChecks,
     )
 }
 
 private fun tier(t: InsightType) = when (t) {
     InsightType.LIQUIDITY_BREACH, InsightType.FRAGILE_PLAN, InsightType.ROBUST_CONCLUSION -> 0
     InsightType.DECISION_CHANGING_UNKNOWN -> 1
-    InsightType.FEASIBLE_REPAIR, InsightType.NO_ACCEPTABLE_REPAIR, InsightType.NO_REPAIR_IN_SCOPE -> 2
-    InsightType.ACTION_DEADLINE -> 3
+    // Market context sits after the Skeptic question and never above the safety verdict (tier 0).
+    InsightType.MARKET_SENSITIVE_ASSUMPTION -> 2
+    InsightType.FEASIBLE_REPAIR, InsightType.NO_ACCEPTABLE_REPAIR, InsightType.NO_REPAIR_IN_SCOPE -> 3
+    InsightType.ACTION_DEADLINE -> 4
 }
 
-private fun DecisionInput.candidates(state: InputState): List<Chf> = when (state) {
+internal fun DecisionInput.candidates(state: InputState): List<Chf> = when (state) {
     is InputState.Exact -> listOf(state.value)
     is InputState.Range -> generateSequence(state.low) { it + step }.takeWhile { it <= state.high }.toList()
     InputState.Unknown -> generateSequence(low) { it + step }.takeWhile { it <= high }.toList()
@@ -348,7 +399,7 @@ private fun DecisionInput.candidates(state: InputState): List<Chf> = when (state
 private fun fact(key: String, value: FactValue, ref: String, provenance: Provenance = Provenance.COMPUTED) =
     ExplanationFact(key, value, provenance, ref)
 
-private fun inputFact(i: DecisionInput, s: InputState) = when (s) {
+internal fun inputFact(i: DecisionInput, s: InputState) = when (s) {
     is InputState.Exact -> ExplanationFact("input:${i.id}", FactValue.Money(s.value), s.provenance, "input:${i.id}")
     is InputState.Range -> ExplanationFact("input:${i.id}", FactValue.MoneyRange(s.low, s.high), s.provenance, "input:${i.id}")
     InputState.Unknown -> ExplanationFact("input:${i.id}", FactValue.MoneyRange(i.low, i.high), s.provenance, "input:${i.id}")

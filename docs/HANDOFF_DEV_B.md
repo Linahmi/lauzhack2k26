@@ -85,3 +85,10 @@ Demo phrases (same as `SampleData.alexDemoScript`): "Why does this plan fail?" â
 - Always show `disclosureKeys` and each insight's `limitationKeys`.
 - Never call `dispatch(..., confirmedByUser = true)` without the user tapping Confirm.
 - Need a different contract? Ask Developer A; don't edit `core/`.
+
+## Market grounding (branch `core/market-grounding`)
+
+`startGraph(SampleData.alexLausanneSession)` returns a rent input with sourced Lausanne/Vaud benchmarks.
+Read `briefing.marketChecks` / `graph.marketCheck("rent")`. Buttons map to `TwinCommand.ShowMarket`,
+`Hypothesis.UseMarketEstimate`, `Correction.AnswerInput` and `Correction.RejectMarketEstimate`.
+Full signatures, keys and display rules: `docs/MARKET_DATA.md`. `SampleData.alexSession` is unchanged.

@@ -91,3 +91,20 @@ One entry per substantial feature (see the challenge gate in [CLAUDE.md](../CLAU
 - **Unchanged:** public `stressTest`, `findMinimalMonthlyRepair`, `findLatestFeasibleStart` keep
   the brute-force algorithm (they are the reference). `RepairOption.candidatesChecked` now
   counts grid values covered (all smaller values proven insufficient), same numbers as before.
+
+## 2026-11-21 — Market-grounded rent benchmarks (core)
+
+- **Problem and beneficiary:** someone moving out often does not yet know their future rent. A
+  plausible, sourced reference helps them explore the decision without inventing a number.
+- **UBS:** a sourced external assumption is kept separate from user facts and computed results
+  (`Provenance.EXTERNAL_SOURCE`, separate what-if branch). The engine checks whether the assumption
+  changes the cash-buffer verdict (threshold verified by stress test). Mismatches are claimed only
+  against fully comparable figures. Details: MARKET_DATA.md.
+- **IMC:** this lowers the barrier for users without a lease or a budget yet ("Help me estimate").
+  It is a hypothesis until a nonprofit validates it. No impact is claimed.
+- **JetBrains:** all matching, checks and revisions live in `core/commonMain`. The same 17 tests
+  pass on JVM and Android host.
+- **Demo proof:** Alex Lausanne. Rent unknown → try the FSO figure CHF 899 → passes → "still need the
+  real lease: breaks above CHF 950" → enter CHF 1,050 → repairable. Fallback: `MarketTest.endToEndAlexLausanne`.
+- **Feasibility:** owner Developer A. No backend, no scraping, a static snapshot. Cut: salary and tax
+  estimators, listing data, live updates. Open item: Statistique Vaud reuse terms (FSO figures are OPEN-BY).

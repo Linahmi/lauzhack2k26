@@ -38,6 +38,7 @@ enum class InsightType {
     NO_REPAIR_IN_SCOPE,        // Explorer: nothing in the declared action set works
     NO_ACCEPTABLE_REPAIR,      // Explorer: something works financially, but not within the user's limits
     ROBUST_CONCLUSION,         // verdict holds across every tested case and unknown range
+    MARKET_SENSITIVE_ASSUMPTION, // a market-linked input could change the verdict; sourced context attached
 }
 
 enum class InsightSeverity { CRITICAL, WARNING, INFO, REASSURING }
@@ -77,6 +78,8 @@ data class FollowUpQuestion(
     /** Why this question matters, e.g. threshold fact "passes up to CHF 1,500". */
     val whyFacts: List<ExplanationFact>,
     val allowsUnsure: Boolean = true,
+    /** Sourced estimates the UI may offer ("Help me estimate"); empty when none apply. */
+    val marketEstimateIds: List<String> = emptyList(),
 )
 
 enum class ActionKind { EXPLORE_ALTERNATIVE, ANSWER_QUESTION, CORRECT_ASSUMPTION, INSPECT }
@@ -98,4 +101,6 @@ data class Briefing(
     val scenarios: Map<String, SimulationResult>,
     /** Full search evidence for the Inspect level. */
     val evidence: BriefingEvidence,
+    /** Market Reality Check per market-linked input (empty when the session has none). */
+    val marketChecks: List<MarketRealityCheck> = emptyList(),
 )
