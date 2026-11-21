@@ -1,64 +1,70 @@
 package ch.ripple.app
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Surface
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
-import ch.ripple.core.SampleData
-import ch.ripple.core.compare
+import androidx.compose.ui.input.key.*
+import ch.ripple.app.assistant.AssistantScreen
+import ch.ripple.app.assistant.SpeechInput
+import ch.ripple.app.assistant.TypedInputOnly
+import ch.ripple.app.assistant.SpeechOutput
+import ch.ripple.app.assistant.SilentOutput
+import ch.ripple.app.assistant.FinancialTwinController
+import ch.ripple.app.components.MotionPreference
+import ch.ripple.app.results.ComparisonScreen
+import ch.ripple.app.theme.RippleTheme
+import ch.ripple.app.welcome.WelcomeScreen
+import ch.ripple.app.welcome.UbsDemoScreen
 
-/** Milestone 1 screen: every number shown comes from ch.ripple.core.compare(). */
 @Composable
-fun App() {
-    val profile = SampleData.alexia
-    val result = remember { compare(profile, SampleData.startWorking, SampleData.mastersDegree) }
-
-    MaterialTheme {
-        Surface(Modifier.fillMaxSize()) {
-            Column(
-                Modifier.padding(24.dp).widthIn(max = 520.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Text("Ripple", style = MaterialTheme.typography.headlineMedium)
-                Text(
-                    "Fictional profile · illustrative assumptions · not a prediction",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                HorizontalDivider()
-                Line("Profile", "${profile.name} (fictional)")
-                Line("Starting cash", profile.openingCash.format())
-                Line("Horizon", "${profile.horizonMonths} months")
-                HorizontalDivider()
-                Line("Baseline: ${result.baseline.scenarioName}", result.baseline.closingCash.format())
-                Line("Alternative: ${result.alternative.scenarioName}", result.alternative.closingCash.format())
-                Line("Difference (alt − base)", result.closingCashDifference.format())
-                HorizontalDivider()
-                Line("Alternative lowest cash", result.alternative.minimumCash.format())
-                Line(
-                    "Alternative first shortfall",
-                    result.alternative.firstNegativeMonth?.let { "Month ${it + 1}" } ?: "None",
-                )
+fun App(
+    speechInput: SpeechInput = TypedInputOnly,
+    speechOutput: SpeechOutput = SilentOutput,
+    platformBackHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> },
+) {
+    var destination by rememberSaveable { mutableStateOf("welcome") }
+    var reduceMotion by rememberSaveable { mutableStateOf(false) }
+    var showDisplayOptions by rememberSaveable { mutableStateOf(false) }
+    var confirmedDeposit by rememberSaveable { mutableStateOf<String?>(null) }
+    val twin = remember { FinancialTwinController { confirmedDeposit = it } }
+    LaunchedEffect(destination) {
+        if (destination == "assistant") twin.initialize(confirmedDeposit)
+    }
+    val screens = rememberSaveableStateHolder()
+    val back = { destination = when (destination) {
+        "assistant" -> "ubs-demo"
+        "comparison" -> "assistant"
+        else -> "welcome"
+    } }
+    val openAssistant = { destination = "assistant" }
+    platformBackHandler(destination != "welcome", back)
+    RippleTheme {
+        Surface(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).imePadding()
+            .onPreviewKeyEvent {
+                if (it.key == Key.Escape && it.type == KeyEventType.KeyUp && destination != "welcome") {
+                    back(); true
+                } else false
+            }) {
+            Column {
+                screens.SaveableStateProvider(destination) { when (destination) {
+                    "assistant" -> AssistantScreen(speechInput, reduceMotion, Modifier.weight(1f),
+                        speechOutput = speechOutput, twin = twin, onBack = back)
+                    "ubs-demo" -> UbsDemoScreen(Modifier.weight(1f), onBack = back, onContinue = openAssistant)
+                    "comparison" -> ComparisonScreen(Modifier.weight(1f), onBack = back, onAssistant = openAssistant)
+                    else -> WelcomeScreen(Modifier.weight(1f), reduceMotion,
+                        onGetStarted = { destination = "ubs-demo" }, onDisplayOptions = { showDisplayOptions = true })
+                } }
             }
         }
-    }
-}
-
-@Composable
-private fun Line(label: String, value: String) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-        Text(label, style = MaterialTheme.typography.bodyMedium)
-        Text(value, style = MaterialTheme.typography.titleMedium)
+        if (showDisplayOptions) AlertDialog(onDismissRequest = { showDisplayOptions = false },
+            title = { Text("Display options") },
+            text = { MotionPreference(reduceMotion) { reduceMotion = it } },
+            confirmButton = { TextButton({ showDisplayOptions = false }) { Text("Done") } })
     }
 }
