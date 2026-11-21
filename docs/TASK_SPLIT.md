@@ -18,53 +18,37 @@ Shared files (change only with a heads-up): `gradle/libs.versions.toml`,
 - No financial arithmetic in UI code — if the UI needs a number, A adds it to `core`.
 - Additive `core` changes are free; renaming/removing a public type needs a heads-up.
 
-## Next milestone: M2 — financial intelligence
+## Current milestone: M2 — Break My Plan
 
-A makes Guardian / Skeptic / Explorer real in `core`; B builds the screens that will show
-them, so both halves meet early.
+Product direction: Break (Guardian) → Question (Skeptic) → Repair (Explorer) → Retest.
+Spec: [BREAK_MY_PLAN_NEXT_MILESTONE.md](BREAK_MY_PLAN_NEXT_MILESTONE.md),
+[RESEARCH_TO_IMPLEMENTATION.md](RESEARCH_TO_IMPLEMENTATION.md). Frozen public API:
+[ARCHITECTURE.md](ARCHITECTURE.md#break-my-plan-m2-frozen-for-the-ui--corebreakmyplankt).
 
-### Step 0 — together (~30 min, before splitting)
+### Developer A — `core` (engine done on branch `core/break-my-plan`)
 
-Agree on these public signatures, their result types and one shared fixture JSON, write
-them into `docs/ARCHITECTURE.md`, and merge that small PR to `main`. Each feature PR carries
-the challenge-gate note from [CLAUDE.md](../CLAUDE.md). This is the contract that keeps
-both developers unblocked.
+Done: `stressTest`, `findMinimalMonthlyRepair`, `findLatestFeasibleStart`, `analyzeUnknown`,
+`rankUnknowns`, asset transfers / restricted assets, Alex demo data, 18 new tests (incl.
+fixture JSON test). Next:
+1. Input provenance on every value (`user-stated`, `assumed`, `unknown`, `computed`,
+   `external-source`) — needed for the M3 inspector and UBS transparency.
+2. A small `explain` model per result: the formula and input IDs behind each number
+   (e.g. `C4 = 2000 − deposit`), so the UI never rebuilds explanations itself.
+3. Generic unknown builders (income level, expense level, one-off amount) so Skeptic works
+   beyond the deposit example.
+4. Fixture JSON → `Scenario` loader in common code if B needs it for session import (M4).
 
-```kotlin
-fun analyzeRisks(result: SimulationResult, minCashBuffer: Chf = Chf.ZERO): RiskReport               // Guardian
-fun interventionWindow(profile, scenario, monthlySaving: Chf): Int?                                  // Guardian
-fun analyzeSensitivity(profile, scenario, shiftPercent: Int = 10): SensitivityReport                 // Skeptic
-fun explore(profile, baseline: Scenario, candidates: List<Scenario>): List<ScenarioComparison>       // Explorer
-```
+### Developer B — `composeApp` / `androidApp`
 
-### Developer A — `core`
-
-The basic simulator (`simulate`, `compare`) is **done** and mirrors the UBS starter kit —
-every team has that. Priority now is what makes Ripple different, in this order:
-
-1. **Intervention window** (our standout): latest month a given monthly saving can start and
-   still avoid the shortfall ("act before month X"); null if already too late.
-2. **Skeptic** `analyzeSensitivity`: give income / expenses / one-off costs explicit low/high
-   bounds (default ±10%), one at a time; report which bound flips "shortfall vs. no
-   shortfall". Results are conditional on the bounds — never probabilities.
-3. **Guardian** `analyzeRisks`: shortfall months, months below a buffer, deepest shortfall,
-   funding gap (extra CHF needed to never go negative).
-4. **Explorer** `explore`: rank candidate scenarios vs. baseline and drop the ones that break
-   a constraint (e.g. cash < 0).
-5. **Tests for each**, checked against hand calculations on Alexia's master's scenario
-   (e.g. its funding gap must be CHF 18,600).
-
-### Developer B — `composeApp` / `androidApp` (M3–M4 groundwork)
-
-1. Navigation shell + adaptive layout: single column on phone, side-by-side panels on desktop.
-2. Scenario picker (baseline vs. alternative) with live recompute via `compare()`.
-3. **Desktop chart**: cash over time for both scenarios from `SimulationResult.cashByMonth`,
-   negative region highlighted — the core demo visual.
-4. **Assumptions panel**: lists every input of the selected scenario (later the Skeptic's editor).
-5. **Launch proof (JetBrains mandatory):** run on a real Android device or emulator and
-   on desktop; save screenshots to `docs/evidence/`.
-6. Plug in Guardian / Skeptic / Explorer cards as A merges each analysis; until then use
-   dummy data matching the agreed types.
+1. **Launch proof (JetBrains mandatory):** run on Android (device or emulator) and desktop;
+   screenshots in `docs/evidence/`. The `Pixel_10a` emulator did not boot here on 2026-11-21.
+2. Minimal Break My Plan screen using `SampleData.alex*` and the real functions:
+   nominal trace vs. stress witness; deposit unknown with its CHF 1,500 threshold; repair
+   amount + latest start table; each result expandable to its inputs and monthly records.
+3. Desktop: side-by-side timeline (nominal / witness / repaired), floor line at CHF 500.
+4. Labels everywhere: fictional, net income, month-end cash, "within the tested cases only".
+5. No arithmetic in Composables — only display fields from `StressTest`, `RepairSearch`,
+   `StartWindow`, `UnknownImpact`.
 
 ## After M2
 

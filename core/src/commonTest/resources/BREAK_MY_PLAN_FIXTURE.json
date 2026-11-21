@@ -1,0 +1,69 @@
+{
+  "name": "ripple_break_my_plan_fictional_move_v1",
+  "currency": "CHF",
+  "time_unit": "month",
+  "horizon_months": 6,
+  "month_indexing": "1-based",
+  "money_unit": "CHF_integers_for_readable_fixture_convert_to_integer_cents_in_code",
+  "profile": {
+    "fictional": true,
+    "initial_liquid_cash": 4000,
+    "normal_monthly_net_income": 2600,
+    "low_monthly_net_income": 1800,
+    "post_move_monthly_expenses": 2350,
+    "pre_move_monthly_expenses": 2000,
+    "liquidity_floor": 500
+  },
+  "move": {
+    "month": 1,
+    "nonrefundable_fee": 500,
+    "refundable_restricted_deposit_min": 1300,
+    "refundable_restricted_deposit_max": 1700,
+    "upfront_cash_outflow_min": 1800,
+    "upfront_cash_outflow_max": 2200
+  },
+  "one_time_obligations": [{"month": 4, "amount": 900, "category": "expense"}],
+  "stress_set": {
+    "type": "at_most_k_low_income_months",
+    "max_low_months": 2,
+    "months": [1, 2, 3, 4, 5, 6],
+    "number_of_sequences": 22,
+    "probabilities_attached": false
+  },
+  "repair_action": {
+    "type": "user_approved_reduction_of_flexible_expenses",
+    "max_monthly_amount": 100,
+    "amount_granularity": 1,
+    "applies_from_start_month_through_month": 6,
+    "scope": "Only this action class; not a general financial optimum"
+  },
+  "expected": {
+    "upfront_2200_nominal_trace": [2050, 2300, 2550, 1900, 2150, 2400],
+    "upfront_2200_low_months_1_2_trace": [1250, 700, 950, 300, 550, 800],
+    "upfront_2200_worst_minimum_cash": 300,
+    "upfront_2200_first_witness_violation_month": 4,
+    "upfront_2200_floor_shortfall": 200,
+    "upfront_2200_start_1_minimum_monthly_reduction": 50,
+    "upfront_2200_start_2_minimum_monthly_reduction": 67,
+    "upfront_2200_start_3_minimum_monthly_reduction": 100,
+    "upfront_2200_start_4_feasible_at_max_100": false,
+    "upfront_2200_latest_start_at_cap_100": 3,
+    "upfront_2200_start_1_reduction_50_low_months_1_2_trace": [1300, 800, 1100, 500, 800, 1100],
+    "upfront_2200_start_3_reduction_100_low_months_1_2_trace": [1250, 700, 1050, 500, 850, 1200],
+    "upfront_2200_start_4_reduction_100_low_months_1_2_trace": [1250, 700, 950, 400, 750, 1100],
+    "upfront_1800_worst_minimum_cash": 700,
+    "upfront_1900_worst_minimum_cash": 600,
+    "upfront_2000_worst_minimum_cash": 500,
+    "upfront_2200_worst_minimum_cash_repeat": 300,
+    "deposit_exact_upper_bound_for_feasibility_without_repair": 1500
+  },
+  "limitations": [
+    "Fictional and deterministic, not a real-world prediction",
+    "No inferred probability for any income sequence",
+    "No automatic claim that flexible spending is reducible without hardship",
+    "Deposit is restricted asset, not necessarily a consumption expense",
+    "No benefits, taxes, credit, inflation, interest, or jurisdiction-specific rules",
+    "6-month period and end-of-month cash only, not daily intra-month liquidity",
+    "Any guarantee applies only to the enumerated uncertainty and action sets"
+  ]
+}

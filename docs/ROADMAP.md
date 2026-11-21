@@ -18,23 +18,20 @@ Open acceptance criteria (JetBrains is mandatory, UBS gate):
 - [ ] UI labels: amounts are **net** monthly income, **cash only — not net worth**, fictional,
       CHF, 120-month horizon.
 
-## M2 — Decision insight (Developer A: core · Developer B: UI groundwork)
+## M2 — Break My Plan (decision insight)
 
-Core, in priority order, each with tests:
-1. **Intervention window** — latest month a given monthly change still avoids the shortfall.
-2. **Skeptic** — bounded sensitivity: each assumption gets an explicit low/high bound;
-   report which bound flips "shortfall / no shortfall". Outcomes are *conditional on the
-   bounds*, never probabilities.
-3. **Guardian** — shortfall months, deepest point, funding gap; negative cash reported as
-   unfunded/infeasible, never as an assumed loan.
-4. **Explorer** — compare user-approved candidate scenarios vs. baseline; flag constraint violations.
+Break (Guardian: exhaustive stress search → counterexample) → Question (Skeptic: which
+bounded unknown flips the verdict) → Repair (Explorer: smallest user-approved monthly cut on
+a CHF 1 grid, and latest start) → Retest. Spec: BREAK_MY_PLAN_NEXT_MILESTONE.md.
 
 Acceptance:
-- [ ] Public signatures + result types + a shared **fixture JSON** agreed and in ARCHITECTURE.md first.
-- [ ] Every analysis traces to the `MonthRecord`s it used (needed for the inspector).
-- [ ] Hand-checked tests (e.g. Alexia master's funding gap = CHF 18,600).
-- [ ] Desktop: cash-over-time chart, baseline vs. alternative, shortfall highlighted.
-- [ ] Results reach both Android and desktop from the same `commonMain` code.
+- [x] Public API frozen in ARCHITECTURE.md; shared fixture JSON in `core/src/commonTest/resources`.
+- [x] Engine in `commonMain`; every case is a full reconciled `SimulationResult` (traceable).
+- [x] All fixture values reproduced by the engine and by an independent brute force.
+- [x] Deposit modelled as restricted asset transfer; net worth unaffected by deposit size.
+- [ ] Minimal Break My Plan screen on Android and desktop using real outputs (Developer B).
+- [ ] Android runtime proof (emulator failed to boot 2026-11-21).
+- [ ] Explanation model (formula + input IDs per result) for the inspector (Developer A).
 
 ## M3 — Accessible journey (main IMC + UBS-transparency milestone)
 

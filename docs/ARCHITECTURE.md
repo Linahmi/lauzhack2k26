@@ -41,7 +41,11 @@ an assumed loan.
 
 Money is `Chf(rappen: Long)` so results are exact and identical on every platform.
 
-Deliberately not modelled yet: taxes, investments, debt, inflation, benefits, net worth.
+Asset transfers (e.g. a refundable deposit) lower cash but are not costs:
+`SimulationResult.restrictedAssets` tracks them and `closingNetWorth = cash + restricted`
+(no liabilities modelled).
+
+Deliberately not modelled yet: taxes, investments, debt, inflation, benefits.
 When transfers/assets/debt arrive, they must follow the UBS rules in
 [UBS_REFERENCE_NOTES.md](UBS_REFERENCE_NOTES.md) (transfers are not expenses, principal vs
 interest, cash ≠ net worth).
@@ -53,13 +57,45 @@ fun simulate(profile: FinancialProfile, scenario: Scenario): SimulationResult
 fun compare(profile: FinancialProfile, baseline: Scenario, alternative: Scenario): ScenarioComparison
 ```
 
-Planned (Milestone 2, signatures to be agreed before work starts):
+### Break My Plan (M2, frozen for the UI — `core/.../BreakMyPlan.kt`)
+
+Break (Guardian) → Question (Skeptic) → Repair (Explorer) → Retest. Every function is an
+exhaustive search over a declared finite set and reuses `simulate()` for each case.
 
 ```kotlin
-fun analyzeRisks(result: SimulationResult, minCashBuffer: Chf = Chf.ZERO): List<Risk>          // Guardian
-fun analyzeSensitivity(profile, scenario, assumptions: List<AssumptionShift>): SensitivityReport // Skeptic
-fun explore(profile, baseline, candidates: List<Scenario>): List<ScenarioComparison>           // Explorer
+// Inputs
+data class StressSet(maxLowIncomeMonths: Int, lowIncomeReduction: Chf) // fun cases(horizon): List<List<Int>>
+data class ExpenseReduction(startMonth: Int, monthly: Chf)            // user-approved action, to horizon end
+class UnknownInput(name, low: Chf, high: Chf, step: Chf, scenarioFor: (Chf) -> Scenario)
+data class AssetTransfer(month, amount, label)                         // in Scenario.transfers: cash -> restricted asset
+
+// Guardian — Break
+fun stressTest(profile, scenario, stress: StressSet, floor: Chf): StressTest
+//   StressTest: cases: List<StressWitness>, worst, worstMinimumCash, passes, counterexample?,
+//               firstViolationMonth?, floorShortfall
+//   StressWitness: lowIncomeMonths: List<Int>, result: SimulationResult (full monthly trace)
+
+// Explorer — Repair + Retest
+fun findMinimalMonthlyRepair(profile, scenario, stress, floor, startMonth, cap: Chf, step = CHF 1): RepairSearch
+//   RepairSearch: startMonth, cap, step, candidatesChecked, minimalMonthlyReduction?, retest: StressTest?, feasible
+fun findLatestFeasibleStart(profile, scenario, stress, floor, cap, step = CHF 1): StartWindow
+//   StartWindow: byStartMonth: List<RepairSearch>, latestFeasibleStart?
+fun Scenario.withExpenseReduction(horizonMonths, ExpenseReduction): Scenario
+
+// Skeptic — Question
+fun analyzeUnknown(profile, unknown: UnknownInput, stress, floor): UnknownImpact
+//   UnknownImpact: worstMinimumCashByValue, passingValues, changesDecision, passesUpTo?, swing
+fun rankUnknowns(profile, unknowns: List<UnknownInput>, stress, floor): List<UnknownImpact> // flips first, then swing
 ```
+
+Demo inputs live in `SampleData` (`alex`, `alexMove(deposit)`, `alexStay`, `alexStress`,
+`alexFloor`, `alexRepairCap`, `alexDepositUnknown`). The team fixture is
+`core/src/commonTest/resources/BREAK_MY_PLAN_FIXTURE.json` (1-based months).
+
+**Scope of every claim:** "passes", "minimal" and "latest" hold only for the enumerated
+stress cases, the action's cap and CHF 1 grid, and the 6-month horizon. Not probabilities,
+not forecasts, not advice. `rankUnknowns` is a heuristic, not proven-optimal question
+selection. Months are zero-based; UIs display `month + 1`.
 
 Change rules: additive changes to `core` are free; renaming/removing a public type needs a
 heads-up to the UI developer. The perspective mixer may only reorder/prioritise analyses —

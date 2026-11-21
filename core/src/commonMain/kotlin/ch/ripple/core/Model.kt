@@ -28,14 +28,25 @@ data class OneOffCost(
     val label: String = "",
 )
 
+/**
+ * Cash moved into an asset the person still owns but cannot spend (e.g. a refundable rental
+ * deposit). It lowers liquid cash but is NOT consumption: net worth is unchanged.
+ */
+data class AssetTransfer(
+    val month: Int,
+    val amount: Chf,
+    val label: String = "",
+)
+
 /** One decision path. Phases must cover every month of the horizon exactly once. */
 data class Scenario(
     val name: String,
     val phases: List<Phase>,
     val oneOffCosts: List<OneOffCost> = emptyList(),
+    val transfers: List<AssetTransfer> = emptyList(),
 )
 
-/** Outputs. One reconciled row per month: closing = opening + income - expenses - oneOffCosts. */
+/** Outputs. One reconciled row per month: closing = opening + income - expenses - oneOffCosts - transfers. */
 data class MonthRecord(
     val month: Int,
     val openingCash: Chf,
@@ -43,8 +54,9 @@ data class MonthRecord(
     val expenses: Chf,
     val oneOffCosts: Chf,
     val closingCash: Chf,
+    val transfersToRestricted: Chf = Chf.ZERO,
 ) {
-    val netFlow: Chf get() = income - expenses - oneOffCosts
+    val netFlow: Chf get() = income - expenses - oneOffCosts - transfersToRestricted
 }
 
 data class SimulationResult(
@@ -61,6 +73,12 @@ data class SimulationResult(
     val firstNegativeMonth: Int? get() = months.firstOrNull { it.closingCash.isNegative }?.month
 
     val cashByMonth: List<Chf> get() = months.map { it.closingCash }
+
+    /** Restricted (non-spendable) assets held at the end of the horizon, e.g. deposits. */
+    val restrictedAssets: Chf get() = months.fold(Chf.ZERO) { acc, m -> acc + m.transfersToRestricted }
+
+    /** Cash + restricted assets. No liabilities are modelled, so this is net worth in this model. */
+    val closingNetWorth: Chf get() = closingCash + restrictedAssets
 }
 
 data class ScenarioComparison(

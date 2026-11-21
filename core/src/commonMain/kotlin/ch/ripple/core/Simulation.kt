@@ -34,11 +34,18 @@ fun simulate(profile: FinancialProfile, scenario: Scenario): SimulationResult {
         oneOffByMonth[c.month] += c.amount
     }
 
+    val transferByMonth = Array(n) { Chf.ZERO }
+    for (t in scenario.transfers) {
+        require(t.month in 0 until n) { "Transfer month ${t.month} outside horizon $n" }
+        require(!t.amount.isNegative) { "Transfers cannot be negative" }
+        transferByMonth[t.month] += t.amount
+    }
+
     var cash = profile.openingCash
     val records = List(n) { m ->
         val p = phaseByMonth[m]!!
-        val closing = cash + p.monthlyIncome - p.monthlyExpenses - oneOffByMonth[m]
-        MonthRecord(m, cash, p.monthlyIncome, p.monthlyExpenses, oneOffByMonth[m], closing)
+        val closing = cash + p.monthlyIncome - p.monthlyExpenses - oneOffByMonth[m] - transferByMonth[m]
+        MonthRecord(m, cash, p.monthlyIncome, p.monthlyExpenses, oneOffByMonth[m], closing, transferByMonth[m])
             .also { cash = closing }
     }
     return SimulationResult(scenario.name, profile.openingCash, records)
