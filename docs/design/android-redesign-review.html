@@ -1,0 +1,673 @@
+<title>Routes Android Redesign</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@300;400;600;700&display=swap">
+<style>
+/* Layout: review page (neutral chrome) holding phone frames in journey order; each frame is followed by its element audit. */
+:root{
+  --bg:#F3F3F1;--paper:#FFFFFF;--fg:#1C1C1C;--muted:#5A5D5C;--rule:#E1E0DA;--frame:#1C1C1C;
+  /* Routes × UBS app tokens (same values as Developer A's Rt object) */
+  --ink:#1C1C1C;--ink2:#5A5D5C;--line:#E0DED6;--chalk:#F9F9F7;--track:#ECEAE3;--white:#FFFFFF;
+  --red:#E60000;--linkred:#DA0000;--bronze:#86671D;--bronzebar:#AF8626;--gold:#F1E2BC;
+  --f:"Source Sans 3",-apple-system,"Segoe UI",Roboto,system-ui,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#141414;--paper:#1D1D1D;--fg:#EDEDEB;--muted:#AFAEA8;--rule:#2E2E2C;--frame:#3A3A38;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#141414;--paper:#1D1D1D;--fg:#EDEDEB;--muted:#AFAEA8;--rule:#2E2E2C;--frame:#3A3A38;color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font:16px/1.55 var(--f);margin:0}
+.wrap{max-width:1180px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:44px 90px;display:grid;gap:56px}
+h1,h2,h3{margin:0;text-wrap:balance;font-weight:600;letter-spacing:-.015em}
+h1{font-size:clamp(30px,4vw,44px);line-height:1.1;font-weight:300}
+h2{font-size:clamp(22px,2.6vw,30px);line-height:1.2;font-weight:400}
+h3{font-size:17px}
+p{margin:0;max-width:70ch}
+.k{font:600 12px/1.3 var(--f);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.lede{font-size:18px;color:var(--muted)}
+.muted{color:var(--muted)}
+section{display:grid;gap:20px}
+.legal{font-size:14px;color:var(--muted);border-top:1px solid var(--rule);padding-top:14px}
+table{border-collapse:collapse;width:100%;font-size:14.5px}
+th,td{text-align:left;vertical-align:top;padding:8px 10px;border-bottom:1px solid var(--rule)}
+th{font-weight:600}
+.tw{overflow-x:auto}
+.tw table{min-width:560px}
+.tag{display:inline-block;font-size:12px;font-weight:600;padding:1px 8px;border-radius:3px;white-space:nowrap;box-shadow:inset 0 0 0 1px var(--rule)}
+.tag.e{background:var(--fg);color:var(--bg);box-shadow:none}
+.tag.c{background:var(--paper)}
+.tag.u{color:var(--muted);text-decoration:line-through}
+
+/* moment = phone + audit side by side */
+.moment{display:grid;grid-template-columns:320px minmax(0,1fr);gap:32px;align-items:start}
+@media (max-width:820px){.moment{grid-template-columns:1fr;justify-items:center}.moment>.audit{justify-self:stretch}}
+.audit{display:grid;gap:14px;min-width:0}
+.audit .q{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:15px}
+.audit .q b{font-weight:600}
+.step{font:600 13px var(--f);color:var(--muted)}
+
+/* ---------------- phone ---------------- */
+.ph{width:320px;max-width:100%;border-radius:34px;padding:9px;background:var(--frame);flex:none}
+.sc{position:relative;height:640px;border-radius:26px;background:var(--white);color:var(--ink);overflow:hidden;font-family:var(--f);font-variant-numeric:tabular-nums;font-size:15px;line-height:1.42}
+.sb{height:26px;display:flex;justify-content:space-between;align-items:center;padding:0 20px;font-size:11.5px;font-weight:600;color:var(--ink)}
+.bd{padding:10px 20px 0;display:flex;flex-direction:column;gap:12px}
+.top{display:flex;justify-content:space-between;align-items:center;height:40px}
+.logo{display:flex;gap:7px;align-items:center;font-weight:700;font-size:15px}
+.logo svg{width:18px;height:18px;color:var(--red)}
+.av{width:30px;height:30px;border-radius:2px;background:var(--chalk);display:grid;place-items:center;font-weight:600;font-size:13px;color:var(--ink2)}
+.bk{color:var(--linkred);text-decoration:underline;text-underline-offset:3px;font-size:14px}
+.ttl{font-size:30px;font-weight:300;line-height:1.12;letter-spacing:-.01em}
+.say{font-size:21px;font-weight:300;line-height:1.32}
+.sm{font-size:13px;color:var(--ink2)}
+mark{background:var(--gold);color:inherit;padding:0 3px;margin:0 -3px}
+.btn{height:48px;border-radius:3px;display:flex;align-items:center;justify-content:center;gap:8px;font-weight:600;font-size:15.5px}
+.btn.p{background:var(--red);color:#fff}
+.btn.s{background:var(--white);color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+.lnk{color:var(--linkred);text-decoration:underline;text-underline-offset:3px;font-weight:600;font-size:14.5px}
+.dock{position:absolute;left:0;right:0;bottom:0;padding:12px 20px 16px;display:grid;gap:8px;background:var(--white)}
+.foot{font-size:10.5px;color:var(--ink2);text-align:center}
+.bub{background:var(--chalk);padding:10px 12px;border-radius:3px;font-size:15px;align-self:flex-end;max-width:85%}
+.fact{display:flex;justify-content:space-between;gap:8px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line);font-size:14.5px}
+.fact small{display:block;font-size:12px;color:var(--ink2)}
+.pv{font-size:11px;font-weight:600;padding:1px 6px;border-radius:2px;box-shadow:inset 0 0 0 1px var(--line);color:var(--ink2);white-space:nowrap}
+.pv.y{background:var(--gold);box-shadow:none;color:var(--ink)}
+.in{height:46px;border-radius:3px;box-shadow:inset 0 0 0 1px var(--line);display:flex;align-items:center;padding:0 12px;color:var(--ink2);font-size:14.5px;gap:10px}
+.mic{width:46px;height:46px;border-radius:3px;background:var(--red);display:grid;place-items:center;flex:none}
+.mic svg{width:20px;height:20px}
+.chip{display:inline-flex;height:32px;align-items:center;padding:0 10px;border-radius:3px;box-shadow:inset 0 0 0 1px var(--line);font-size:13.5px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.big{font-size:38px;font-weight:300;letter-spacing:-.02em;line-height:1.05}
+.big.t{color:var(--bronze)}
+.meter{position:relative;height:6px;background:var(--track);margin:18px 0 4px}
+.meter i{position:absolute;left:0;top:0;bottom:0;background:var(--bronzebar)}
+.meter i.n{background:var(--ink)}
+.meter b{position:absolute;top:-5px;bottom:-5px;width:2px;background:var(--ink)}
+.meter em{position:absolute;top:-19px;font-style:normal;font-size:11px;font-weight:600;color:var(--ink2);transform:translateX(-50%);white-space:nowrap}
+.row{display:grid;grid-template-columns:22px 1fr auto;gap:10px;align-items:center;padding:11px 12px;background:var(--chalk);border-radius:3px;font-size:14px}
+.row .n{width:20px;height:20px;border-radius:2px;background:var(--white);display:grid;place-items:center;font-size:11px;font-weight:700;color:var(--ink2)}
+.row.ok{background:var(--gold)}
+.rows{display:grid;gap:4px}
+.scrim{position:absolute;inset:0;background:rgba(28,28,28,.32)}
+.sheet{position:absolute;left:0;right:0;bottom:0;background:var(--white);border-radius:6px 6px 0 0;padding:10px 20px 18px;display:grid;gap:12px}
+.grab{width:36px;height:4px;border-radius:2px;background:var(--line);justify-self:center}
+.rng{position:relative;height:26px}
+.rng .tr{position:absolute;left:0;right:0;top:10px;height:6px;background:linear-gradient(90deg,var(--ink) 0 50%,var(--bronzebar) 50% 100%)}
+.rng .kn{position:absolute;top:2px;left:37.5%;width:22px;height:22px;border-radius:50%;background:var(--white);box-shadow:0 0 0 2.5px var(--ink);transform:translateX(-50%)}
+.rng .mk{position:absolute;left:50%;top:4px;width:2px;height:18px;background:var(--ink)}
+.rax{display:flex;justify-content:space-between;font-size:11.5px;color:var(--ink2)}
+.field{height:46px;border-radius:3px;box-shadow:inset 0 0 0 1.5px var(--ink);display:flex;align-items:center;padding:0 12px;font-weight:600;font-size:16px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.note{font-size:12px;font-weight:600;padding:3px 8px;border-radius:2px;box-shadow:inset 0 0 0 1px var(--line);justify-self:start}
+.math{display:grid;grid-template-columns:1fr auto;gap:4px 10px;font-size:14px}
+.math .tot{border-top:1px solid var(--ink);padding-top:4px;font-weight:600}
+.path{display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:12px 0;border-top:1px solid var(--line);font-size:14.5px}
+.path span{font-size:12.5px;color:var(--ink2)}
+.ph-label{font-size:12.5px;color:var(--muted);text-align:center;margin-top:8px}
+.flow{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:14px}
+.flow span{padding:4px 10px;background:var(--paper);box-shadow:inset 0 0 0 1px var(--rule);border-radius:3px}
+.flow i{font-style:normal;color:var(--muted)}
+.rec{background:var(--paper);border-radius:4px;padding:24px;display:grid;gap:12px;box-shadow:inset 0 0 0 1px var(--rule)}
+/* three-space nav + new mockup parts */
+.sc.t3 .bd{padding-bottom:70px}
+.nav{position:absolute;left:0;right:0;bottom:0;height:62px;background:var(--white);border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(3,1fr)}
+.nav div{display:grid;place-items:center;align-content:center;gap:3px;font-size:11.5px;font-weight:600;color:var(--ink2);position:relative}
+.nav div svg{width:20px;height:20px}
+.nav div.on{color:var(--ink)}
+.nav div.on::before{content:"";position:absolute;top:-1px;left:28%;right:28%;height:2px;background:var(--ink)}
+.live{display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--chalk);border-radius:3px}
+.wave{display:flex;gap:3px;align-items:center;height:22px}
+.wave i{width:3px;background:var(--red);border-radius:1px}
+.cap{font-size:15px;color:var(--ink2);font-style:italic}
+.rt{font-size:15.5px;line-height:1.4}
+.card{box-shadow:inset 0 0 0 1px var(--line);border-radius:4px;padding:12px;display:grid;gap:8px}
+.card.g{background:var(--gold);box-shadow:none}
+.strip{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;align-items:end;height:92px;position:relative;margin-top:4px}
+.strip i{display:block;background:var(--ink);border-radius:1px}
+.strip i.w{background:var(--bronzebar)}
+.strip i.sel{outline:2px solid var(--ink);outline-offset:2px}
+.strip .fl{position:absolute;left:0;right:0;border-top:1.5px dashed var(--ink2)}
+.mo{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;font-size:11px;color:var(--ink2);text-align:center}
+.mo b{color:var(--ink)}
+.seg{display:grid;grid-template-columns:repeat(3,1fr);box-shadow:inset 0 0 0 1px var(--line);border-radius:3px;font-size:13px;font-weight:600}
+.seg span{padding:7px 4px;text-align:center;color:var(--ink2)}
+.seg span.on{background:var(--ink);color:#fff;border-radius:3px}
+.grp{display:flex;justify-content:space-between;align-items:center;padding:11px 0;border-bottom:1px solid var(--line);font-size:14.5px;font-weight:600}
+.grp small{font-weight:400;color:var(--ink2);font-size:12.5px}
+.hist{display:grid;grid-template-columns:44px 1fr;gap:2px 10px;font-size:13px;padding:6px 0}
+.hist b{font-weight:600;color:var(--ink2);font-size:12px}
+.arch{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.arch div{background:var(--paper);border-radius:4px;padding:16px;box-shadow:inset 0 0 0 1px var(--rule);display:grid;gap:6px;align-content:start}
+.arch div p{font-size:14.5px}
+.trio{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:28px;justify-items:center}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+
+<div class="wrap">
+
+<header style="display:grid;gap:16px">
+  <p class="k">Routes Android · Phase A design review · nothing implemented yet</p>
+  <h1>A phone companion that starts with the person, and shows one thing at a time</h1>
+  <p class="lede">Ten moments of the Android journey, each drawn at phone size in the approved Routes × UBS identity. Under every screen: what the person is trying to do, the one thing they must understand, and why each element is there.</p>
+  <p class="muted">Branch <b>feature/android-routes-redesign</b>, cut from local <b>main</b> at 0e198b7 (Developer A's evolving-twin core). Numbers in the Alex screens are the values the shared Kotlin engine already asserts in <b>EvolvingTwinTest</b> (CHF 300 worst April, CHF 550 after confirming CHF 1,450). The phone will read them from the engine at runtime, not from these drawings.</p>
+  <p class="legal">Routes is an independent hackathon prototype for the UBS AI Financial Twin challenge. It is not made, approved or endorsed by UBS. No UBS logo, typeface or imagery is used.</p>
+</header>
+
+<section>
+  <div style="display:grid;gap:6px"><p class="k">Update · 22 Nov · three spaces</p><h2>Explore, My Routes, My Twin: one session, three views of it</h2></div>
+  <p>The phone gets three destinations in a bottom bar and nothing else. You <b>talk</b> in Explore, <b>experiment</b> in My Routes and <b>check what Routes recorded</b> in My Twin. All three read and write one shared session, so none of them keeps its own copy of the numbers.</p>
+  <div class="arch">
+    <div><p class="k">Explore</p><h3>Talk</h3><p>Voice first, with a full text alternative. Each supported request becomes an engine command: what-if, correction, rejection, “why”, compare. When a result is calculated, one short finding appears, plus a link to the decision.</p></div>
+    <div><p class="k">My Routes</p><h3>Experiment</h3><p>One card per decision that a conversation created. Open it to switch routes, drag the deposit, tap a month, compare two routes, confirm a fact, step back through versions and open the math.</p></div>
+    <div><p class="k">My Twin</p><h3>Check and correct</h3><p>What Routes has recorded, grouped by how sure it is: confirmed by you, estimates, assumptions, your commitments, sources, and history. Tap any line to see where it came from, edit it or delete it.</p></div>
+  </div>
+  <div class="flow"><span>Voice or text</span><i>→</i><span>Command (proposed)</span><i>→</i><span>You confirm, if it changes a fact</span><i>→</i><span>Shared session: one decision graph per decision</span><i>→</i><span>Explore · My Routes · My Twin redraw</span></div>
+  <div class="tw"><table><thead><tr><th>Piece</th><th>Where it lives</th><th>Status</th></tr></thead><tbody>
+    <tr><td>Engine, decision graph, versions, corrections, rejections, provenance</td><td>core / commonMain (exists)</td><td>Reused unchanged: <b>DecisionGraph</b> already keeps every version as a node, with what-ifs marked as hypothetical</td></tr>
+    <tr><td><b>RoutesSession</b>: list of decisions, active decision, confirmed-fact log, conversation turns</td><td>composeApp / commonMain (new, small)</td><td>Holds the graphs. Contains no financial maths; each change goes through <b>dispatch()</b></td></tr>
+    <tr><td>Finding, causes, deposit preview</td><td>commonMain <b>RoutesJourney.kt</b> (already on main, used by desktop)</td><td>Reused by the phone</td></tr>
+    <tr><td>Voice → command</td><td>Marwa's Gemini Live code (<b>ui/my-future</b>, Android) plus her <b>FinancialTwinController</b> pattern (commonMain)</td><td>Today it covers a profile proposal and a typed deposit. Phase B adds tool calls for what-if, correction, reject, why and compare. Untested here: needs her token service and an API key</td></tr>
+    <tr><td>Text → command</td><td>core <b>parseCommand</b> plus answer chips</td><td>Works without a network. Only understands a small set of phrases, so chips cover the rest</td></tr>
+    <tr><td>Phone ↔ laptop handoff</td><td>Not on main</td><td><b>Not built.</b> Both apps use the same models, but nothing moves a session between devices. The phone never claims to sync</td></tr>
+    <tr><td>Saving across app restarts</td><td>None</td><td>Session lasts while the app is open. My Twin says so</td></tr>
+  </tbody></table></div>
+</section>
+
+<section>
+  <div style="display:grid;gap:6px"><p class="k">Three mockups</p><h2>The same decision, seen from each space</h2></div>
+  <p class="muted">Alex is the fictional example person. Every amount on these screens is a value the engine's tests already check, or is worked out from the engine's own fixture: CHF 300 worst April at an unknown deposit; CHF 550 at a confirmed CHF 1,450; CHF 400 at CHF 1,600, since each extra franc of deposit lowers April by one franc. At runtime every amount is read from the engine. Bar heights are drawings.</p>
+  <div class="trio">
+
+  <!-- Explore, live voice -->
+  <div>
+    <div class="ph"><div class="sc t3">
+      <div class="sb"><span>9:41</span><span>▮▮▮</span></div>
+      <div class="bd">
+        <div class="top"><div class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M7 21V14c0-3.5 2.5-6 6-6h6"/><path d="M7 14c0-3.5-1.5-6-3-8"/><circle cx="19" cy="8" r="1.7" fill="currentColor" stroke="none"/></svg>Routes</div><span class="sm">Alex · example</span></div>
+        <div class="bub">What if I moved out?</div>
+        <div class="rt">Most months look fine. But if your pay comes in lower for two months, <mark>April could be tight: CHF 300 left</mark>, below the CHF 500 you like to keep.</div>
+        <div class="sm">Added to My Routes · <span class="lnk" style="font-size:13px">Moving out</span></div>
+        <div class="rt">The deposit isn't known yet. Do you have the amount?</div>
+        <div class="bub">It's fourteen fifty</div>
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;font-size:14px"><span>Deposit <b>CHF 1,450</b></span><span class="pv">heard, not saved</span></div>
+          <div class="sm">April worst case would be <b style="color:var(--ink)">CHF 550</b></div>
+          <div class="two"><div class="btn s" style="height:40px;font-size:14px">Just trying</div><div class="btn p" style="height:40px;font-size:14px">That's real</div></div>
+        </div>
+      </div>
+      <div style="position:absolute;left:0;right:0;bottom:62px;padding:8px 20px 10px;background:var(--white)">
+        <div class="live">
+          <div class="wave"><i style="height:8px"></i><i style="height:16px"></i><i style="height:22px"></i><i style="height:12px"></i><i style="height:18px"></i><i style="height:7px"></i></div>
+          <span class="cap" style="flex:1">Listening…</span>
+          <span class="pv">Type</span><span class="pv">Stop</span>
+        </div>
+      </div>
+      <div class="nav">
+        <div class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>Explore</div>
+        <div><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M7 21V14c0-3.5 2.5-6 6-6h6"/><path d="M7 14c0-3.5-1.5-6-3-8"/></svg>My Routes</div>
+        <div><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>My Twin</div>
+      </div>
+    </div></div>
+    <p class="ph-label">Explore · active voice conversation</p>
+  </div>
+
+  <!-- My Routes -->
+  <div>
+    <div class="ph"><div class="sc t3">
+      <div class="sb"><span>9:43</span><span>▮▮▮</span></div>
+      <div class="bd" style="gap:10px">
+        <div class="top"><span class="bk">‹ My Routes</span><span class="sm">3 versions</span></div>
+        <div class="ttl" style="font-size:24px">Moving out</div>
+        <div class="seg"><span class="on">Move now</span><span>Wait 2 mo</span><span>Stay</span></div>
+        <div style="display:flex;justify-content:space-between;align-items:baseline"><span class="sm">Worst case tested, April</span><span class="big t" style="font-size:30px">CHF 400</span></div>
+        <div>
+          <div class="strip">
+            <i style="height:75px"></i><i style="height:56px"></i><i style="height:37px"></i><i class="w sel" style="height:14px"></i><i style="height:23px"></i><i style="height:31px"></i>
+            <span class="fl" style="bottom:17px"></span>
+          </div>
+          <div class="mo"><span>Jan</span><span>Feb</span><span>Mar</span><b>Apr</b><span>May</span><span>Jun</span></div>
+          <div class="sm" style="margin-top:4px">- - - your CHF 500 cushion · tap a month</div>
+        </div>
+        <div style="display:grid;gap:4px">
+          <div style="display:flex;justify-content:space-between;font-size:14px"><span>Deposit</span><b>CHF 1,600 · trying</b></div>
+          <div class="rng"><div class="tr"></div><div class="mk"></div><div class="kn" style="left:75%"></div></div>
+          <div class="rax"><span>1,300</span><span>above 1,500 April drops under 500</span><span>1,700</span></div>
+        </div>
+        <div class="sm">Confirmed version: <b style="color:var(--ink)">CHF 550</b> at CHF 1,450 · <span class="lnk" style="font-size:13px">Compare</span> · <span class="lnk" style="font-size:13px">How is this calculated?</span></div>
+        <div class="two"><div class="btn s" style="height:42px;font-size:14px">Keep as a route</div><div class="btn p" style="height:42px;font-size:14px">It's the real amount</div></div>
+      </div>
+      <div class="nav">
+        <div><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>Explore</div>
+        <div class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M7 21V14c0-3.5 2.5-6 6-6h6"/><path d="M7 14c0-3.5-1.5-6-3-8"/></svg>My Routes</div>
+        <div><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>My Twin</div>
+      </div>
+    </div></div>
+    <p class="ph-label">My Routes · one decision, deposit being dragged</p>
+  </div>
+
+  <!-- My Twin -->
+  <div>
+    <div class="ph"><div class="sc t3">
+      <div class="sb"><span>9:44</span><span>▮▮▮</span></div>
+      <div class="bd" style="gap:6px">
+        <div class="top"><div class="ttl" style="font-size:24px">My Twin</div><span class="sm">Alex · example</span></div>
+        <div class="grp"><span>Confirmed by you</span><small>3 ›</small></div>
+        <div class="fact"><span>Rental deposit<small>confirmed 9:42 · was “1,300–1,700, unknown”</small></span><span class="pv y">CHF 1,450</span></div>
+        <div class="fact"><span>Pay coming in<small>per month</small></span><span class="pv y">CHF 2,600</span></div>
+        <div class="grp"><span>Estimates and assumptions</span><small>2 ›</small></div>
+        <div class="grp"><span>Your commitments</span><small>cushion CHF 500 · cuts up to CHF 100 ›</small></div>
+        <div class="grp"><span>Sources</span><small>none used yet ›</small></div>
+        <div class="grp" style="border:0;padding-bottom:2px"><span>History</span><small>Moving out</small></div>
+        <div class="hist"><b>9:42</b><span>Confirmed deposit CHF 1,450 · April 300 → 550</span><b>9:41</b><span>Tried deposit CHF 1,450 <span class="pv">what-if</span></span><b>9:40</b><span>Asked “What if I moved out?” · decision created</span></div>
+        <div class="sm" style="margin-top:4px">Only what you confirm is recorded. Kept on this phone while the app is open.</div>
+      </div>
+      <div class="nav">
+        <div><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>Explore</div>
+        <div><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M7 21V14c0-3.5 2.5-6 6-6h6"/><path d="M7 14c0-3.5-1.5-6-3-8"/></svg>My Routes</div>
+        <div class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>My Twin</div>
+      </div>
+    </div></div>
+    <p class="ph-label">My Twin · confirmed facts and history</p>
+  </div>
+  </div>
+
+  <div class="tw"><table><thead><tr><th>Screen</th><th>What each tap does in the engine</th></tr></thead><tbody>
+    <tr><td>Explore</td><td>“What if I moved out?” starts a decision graph, which becomes the My Routes card. “Fourteen fifty” is turned into a deposit amount and previewed. <b>Just trying</b> runs <b>explore(WhatIfInput)</b>. <b>That's real</b> runs <b>correct(AnswerInput)</b> only after this tap. Rejecting a suggestion out loud is proposed as <b>RejectRepair</b> and saved only once confirmed.</td></tr>
+    <tr><td>My Routes</td><td>The route control selects a node: the confirmed move, the delay option, or stay. Dragging the deposit previews it (no new version). <b>Keep as a route</b> adds a what-if node. <b>It's the real amount</b> adds a confirmed correction. Tapping a month opens that month's causes and math. <b>3 versions</b> lists the graph's path and lets you go back to any node. <b>Compare</b> uses <b>compareBranches</b>. Values not computed yet show “…”, never a guess.</td></tr>
+    <tr><td>My Twin</td><td>Lists inputs and commitments from the active node's session, each with its provenance tag (user-stated, range, assumed, computed, external). History is the graph's list of nodes. Editing a fact is the same <b>correct()</b> call as anywhere else, so the earlier version stays as its parent node.</td></tr>
+  </tbody></table></div>
+  <p class="muted">What the phone does not have that desktop does: several routes side by side with animation. On the phone, Compare shows two routes, one at a time on the same chart. Nothing requires moving to the laptop to finish an analysis.</p>
+</section>
+
+<section>
+  <div style="display:grid;gap:6px"><p class="k">Earlier draft, kept for reference</p><h2>The ten moments now live inside these spaces</h2></div>
+  <p class="muted">Moments 1–5 become Explore, moments 6–10 become My Routes (the month, deposit sheet, update, verify and other paths), and moment 3 becomes the first view of My Twin.</p>
+</section>
+
+<section>
+  <div style="display:grid;gap:6px"><p class="k">The journey</p><h2>Four states, one question at a time</h2></div>
+  <div class="flow"><span>1 First open</span><i>→</i><span>2 Conversation</span><i>→</i><span>3 What Routes understood</span><i>→</i><span>4 Home (returning)</span><i>→</i><span>5 The finding</span><i>→</i><span>6 April</span><i>→</i><span>7 Check the deposit</span><i>→</i><span>8 Updated</span><i>→</i><span>9 Where a number comes from</span><i>→</i><span>10 Other paths and “not for me”</span></div>
+  <p class="muted">Back always returns one level: Verify → Explore → Understand → Home. Each level keeps its scroll position and the decision branch the person was on.</p>
+</section>
+
+<!-- 1 -->
+<section class="moment">
+  <div>
+    <div class="ph"><div class="sc">
+      <div class="sb"><span>9:41</span><span>▮▮▮</span></div>
+      <div class="bd">
+        <div class="top"><div class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M7 21V14c0-3.5 2.5-6 6-6h6"/><path d="M7 14c0-3.5-1.5-6-3-8"/><circle cx="19" cy="8" r="1.7" fill="currentColor" stroke="none"/></svg>Routes</div></div>
+        <div style="height:70px"></div>
+        <div class="say">Hi, I'm Routes. I'd love to get to know you a little.</div>
+        <div class="say" style="font-weight:400">What's life looking like for you at the moment?</div>
+        <p class="sm">You can skip anything, and say “about” when you're not sure of an amount.</p>
+      </div>
+      <div class="dock">
+        <div class="btn p"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#fff" stroke-width="2"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>Talk to Routes</div>
+        <div class="btn s">Type instead</div>
+        <div style="text-align:center"><span class="lnk" style="font-size:13.5px">Try with an example person (Alex)</span></div>
+        <div class="foot">Independent prototype · not made or endorsed by UBS</div>
+      </div>
+    </div></div>
+    <p class="ph-label">1 · First open, no profile</p>
+  </div>
+  <div class="audit">
+    <div class="q"><b>Doing</b><span>Opening an app they know nothing about.</span><b>Must get</b><span>This listens first; I can just talk.</span><b>Next</b><span>Answer the question, by voice or text.</span></div>
+    <div class="tw"><table><thead><tr><th>Element</th><th>Class</th><th>Why it is here / what if removed</th></tr></thead><tbody>
+      <tr><td>Greeting + one open question</td><td><span class="tag e">Essential</span></td><td>The whole screen. Without it the app opens on buttons and data again.</td></tr>
+      <tr><td>“Skip anything, say about”</td><td><span class="tag e">Essential</span></td><td>Removes the fear of needing exact numbers. One line.</td></tr>
+      <tr><td>Talk / Type instead</td><td><span class="tag e">Essential</span></td><td>Two equal ways in; text is never second-class (accessibility, noisy places).</td></tr>
+      <tr><td>Example person (Alex)</td><td><span class="tag c">Contextual</span></td><td>For the demo and for people who want to look before sharing. Small link, not a button.</td></tr>
+      <tr><td>Disclaimer line</td><td><span class="tag e">Essential</span></td><td>Red and Swiss type make the sponsor visible, so we say who made it.</td></tr>
+      <tr><td>Swiss landscape, flag, “Get started”, chart preview</td><td><span class="tag u">Removed</span></td><td>Decoration; competes with the question.</td></tr>
+    </tbody></table></div>
+  </div>
+</section>
+
+<!-- 2 -->
+<section class="moment">
+  <div>
+    <div class="ph"><div class="sc">
+      <div class="sb"><span>9:42</span><span>▮▮▮</span></div>
+      <div class="bd">
+        <div class="top"><span class="bk">‹ Back</span><span class="sm">Getting to know you</span></div>
+        <div class="bub">I live with my parents, I work in a shop, and I'm thinking about getting my own place.</div>
+        <div class="say" style="font-size:19px">That's a big step. Roughly how much comes in each month, after tax?</div>
+        <div class="chips"><span class="chip">About CHF 2,600</span><span class="chip">It changes</span><span class="chip">Skip</span></div>
+        <div style="display:grid;gap:4px;margin-top:6px">
+          <p class="k" style="font-size:10.5px;color:var(--ink2)">Routes noted</p>
+          <div class="fact"><span>Lives with parents<small>you said</small></span><span class="lnk" style="font-size:13px">Edit</span></div>
+          <div class="fact"><span>Considering moving out<small>you said</small></span><span class="lnk" style="font-size:13px">Edit</span></div>
+        </div>
+      </div>
+      <div class="dock" style="grid-template-columns:1fr auto">
+        <div class="in">Type your answer…</div>
+        <div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></div>
+      </div>
+    </div></div>
+    <p class="ph-label">2 · Conversation, one question at a time</p>
+  </div>
+  <div class="audit">
+    <div class="q"><b>Doing</b><span>Telling their story.</span><b>Must get</b><span>Routes heard me, and I can fix what it wrote down.</span><b>Next</b><span>Answer, approximate, or skip.</span></div>
+    <div class="tw"><table><thead><tr><th>Element</th><th>Class</th><th>Why</th></tr></thead><tbody>
+      <tr><td>Their last answer + one next question</td><td><span class="tag e">Essential</span></td><td>No transcript wall; only the current exchange.</td></tr>
+      <tr><td>Quick answers incl. “It changes”, “Skip”</td><td><span class="tag e">Essential</span></td><td>“It changes” becomes a range, not a forced number. Skip is always one tap.</td></tr>
+      <tr><td>“Routes noted” facts with Edit</td><td><span class="tag c">Contextual</span></td><td>Shows only the facts from this exchange; full list lives in screen 3.</td></tr>
+      <tr><td>Question counter, progress bar</td><td><span class="tag u">Removed</span></td><td>Turns a conversation into a questionnaire.</td></tr>
+    </tbody></table></div>
+    <p class="muted" style="font-size:14px"><b>Feasibility:</b> on this branch the text path is deterministic: quick-answer chips and amount fields map to engine inputs; free text goes through <code>parseCommand</code>, which only knows a few phrases. Voice is <b>not available</b> on this branch. Marwa's Gemini Live code on <code>ui/my-future</code> needs a local token service and an API key and I have not seen it work, so the mic is drawn but will be disabled with “Voice isn't set up on this device” until we decide.</p>
+  </div>
+</section>
+
+<!-- 3 -->
+<section class="moment">
+  <div>
+    <div class="ph"><div class="sc">
+      <div class="sb"><span>9:45</span><span>▮▮▮</span></div>
+      <div class="bd">
+        <div class="top"><span class="bk">‹ Back</span><span class="sm">Your picture</span></div>
+        <div class="ttl" style="font-size:26px">Here's what I understood. Is it right?</div>
+        <div>
+          <div class="fact"><span>Money in each month<small>after tax</small></span><span style="display:grid;justify-items:end;gap:3px"><b>CHF 2,600</b><span class="pv">about · you said</span></span></div>
+          <div class="fact"><span>Living costs now<small>at your parents'</small></span><span style="display:grid;justify-items:end;gap:3px"><b>CHF 2,000</b><span class="pv">about · you said</span></span></div>
+          <div class="fact"><span>Savings today</span><span style="display:grid;justify-items:end;gap:3px"><b>CHF 4,000</b><span class="pv">you said</span></span></div>
+          <div class="fact"><span>Yearly bill in April</span><span style="display:grid;justify-items:end;gap:3px"><b>CHF 900</b><span class="pv">you said</span></span></div>
+          <div class="fact"><span>A cushion you'd like to keep</span><span style="display:grid;justify-items:end;gap:3px"><b>CHF 500</b><span class="pv">Routes' guess</span></span></div>
+        </div>
+        <p class="sm">Tap any line to change it.</p>
+      </div>
+      <div class="dock"><div class="btn p">Looks right</div></div>
+    </div></div>
+    <p class="ph-label">3 · What Routes understood (editable profile)</p>
+  </div>
+  <div class="audit">
+    <div class="q"><b>Doing</b><span>Checking Routes didn't get them wrong.</span><b>Must get</b><span>Which numbers are mine and which are guesses.</span><b>Next</b><span>Confirm, or tap a line to fix it.</span></div>
+    <div class="tw"><table><thead><tr><th>Element</th><th>Class</th><th>Why</th></tr></thead><tbody>
+      <tr><td>Five plain-language facts</td><td><span class="tag e">Essential</span></td><td>Everything the engine needs for a cash path, nothing more.</td></tr>
+      <tr><td>Source label per fact</td><td><span class="tag e">Essential</span></td><td>Maps to core <code>Provenance</code>: USER_STATED, USER_ESTIMATE_RANGE, ASSUMED. The cushion says “Routes' guess” because it is.</td></tr>
+      <tr><td>Net worth, pension, debt</td><td><span class="tag u">Removed</span></td><td>Not modelled for this path (core <code>ModelCoverage</code>); listing them would imply we compute them.</td></tr>
+    </tbody></table></div>
+  </div>
+</section>
+
+<!-- 4 -->
+<section class="moment">
+  <div>
+    <div class="ph"><div class="sc">
+      <div class="sb"><span>18:10</span><span>▮▮▮</span></div>
+      <div class="bd">
+        <div class="top"><div class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M7 21V14c0-3.5 2.5-6 6-6h6"/><path d="M7 14c0-3.5-1.5-6-3-8"/><circle cx="19" cy="8" r="1.7" fill="currentColor" stroke="none"/></svg>Routes</div><div class="av">A</div></div>
+        <div style="height:24px"></div>
+        <div class="say">What are you thinking about, Alex?</div>
+        <div class="chips"><span class="chip">What if I moved out?</span><span class="chip">What if I waited?</span></div>
+        <div style="margin-top:18px">
+          <p class="k" style="font-size:10.5px;color:var(--ink2)">Pick up where you left off</p>
+          <div class="path"><b>Moving out in January</b><span class="lnk" style="font-size:13px">Open</span><span>April could be tight · deposit not confirmed</span></div>
+        </div>
+      </div>
+      <div class="dock" style="grid-template-columns:1fr auto">
+        <div class="in">Ask “what happens if…”</div>
+        <div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></div>
+      </div>
+    </div></div>
+    <p class="ph-label">4 · Home, returning user</p>
+  </div>
+  <div class="audit">
+    <div class="q"><b>Doing</b><span>Coming back with a question, or to continue.</span><b>Must get</b><span>I can ask anything, or carry on.</span><b>Next</b><span>Ask, tap a suggestion, or reopen a decision.</span></div>
+    <div class="tw"><table><thead><tr><th>Element</th><th>Class</th><th>Why</th></tr></thead><tbody>
+      <tr><td>One question + ask field</td><td><span class="tag e">Essential</span></td><td>Product promise: start from “what happens if…”.</td></tr>
+      <tr><td>Suggestions</td><td><span class="tag c">Contextual</span></td><td>Only decisions the engine can model (core <code>DecisionOption</code>s), so a tap never dead-ends.</td></tr>
+      <tr><td>Last decision, one line of status</td><td><span class="tag c">Contextual</span></td><td>Shown only once a decision exists; from the core <code>DecisionGraph</code>.</td></tr>
+      <tr><td>Balance, chart, dashboard tiles</td><td><span class="tag u">Removed</span></td><td>Routes is not a bank app; there is no account to show.</td></tr>
+    </tbody></table></div>
+    <p class="muted" style="font-size:14px"><b>Feasibility:</b> the core keeps history in memory. Surviving an app restart needs saving the session on the phone, which isn't built anywhere yet. The plan is to keep it in memory for the demo and label it that way.</p>
+  </div>
+</section>
+
+<!-- 5 -->
+<section class="moment">
+  <div>
+    <div class="ph"><div class="sc">
+      <div class="sb"><span>18:11</span><span>▮▮▮</span></div>
+      <div class="bd">
+        <div class="top"><span class="bk">‹ Home</span><div class="av">A</div></div>
+        <p class="sm" style="font-weight:600">Your decision</p>
+        <div class="ttl">Moving out in January</div>
+        <p class="sm">Compared with <span class="lnk" style="font-size:13px">staying at home</span></p>
+        <div class="say" style="margin-top:8px">Most months look fine. But if your pay comes in lower for two months, <mark>April could be tight</mark>: you'd have CHF 300 left, below your CHF 500 cushion.</div>
+      </div>
+      <div class="dock">
+        <div class="btn p">See what happens in April →</div>
+        <div style="text-align:center"><span class="lnk">Other paths</span></div>
+      </div>
+    </div></div>
+    <p class="ph-label">5 · The finding (Understand)</p>
+  </div>
+  <div class="audit">
+    <div class="q"><b>Doing</b><span>Asking “what if I moved out?”</span><b>Must get</b><span>One month could be a problem, and roughly how much.</span><b>Next</b><span>Look at that month.</span></div>
+    <div class="tw"><table><thead><tr><th>Element</th><th>Class</th><th>Why</th></tr></thead><tbody>
+      <tr><td>One sentence, gold on the key phrase</td><td><span class="tag e">Essential</span></td><td>Core <code>Briefing.primary</code>: the engine already ranks one insight first.</td></tr>
+      <tr><td>“If your pay comes in lower for two months”</td><td><span class="tag e">Essential</span></td><td>Says it's a tested hard case, not a forecast, in everyday words.</td></tr>
+      <tr><td>Compared with staying at home</td><td><span class="tag e">Essential</span></td><td>UBS baseline-vs-alternative, as one link instead of a second chart.</td></tr>
+      <tr><td>Six-month chart, M1–M6 buttons, two income lines</td><td><span class="tag u">Removed</span></td><td>Three things to decode before the person learns one fact. Desktop keeps the timeline.</td></tr>
+    </tbody></table></div>
+  </div>
+</section>
+
+<!-- 6 -->
+<section class="moment">
+  <div>
+    <div class="ph"><div class="sc">
+      <div class="sb"><span>18:11</span><span>▮▮▮</span></div>
+      <div class="bd">
+        <div class="top"><span class="bk">‹ Moving out in January</span></div>
+        <div class="big t">CHF 300</div>
+        <p class="sm" style="margin-top:-6px">left at the end of April, in the hardest case Routes tried</p>
+        <div class="meter"><i style="width:20%"></i><b style="left:33.3%"></b><em style="left:33.3%">CHF 500 cushion</em></div>
+        <p class="sm">CHF 200 below the cushion you'd like to keep.</p>
+        <p class="k" style="font-size:10.5px;color:var(--ink2);margin-top:4px">What led here</p>
+        <div class="rows">
+          <div class="row"><span class="n">1</span><span>Pay could be CHF 800 lower in January and February</span><span class="sm">test</span></div>
+          <div class="row"><span class="n">2</span><span>The deposit could be up to CHF 1,700. You don't know it yet.</span><span class="lnk" style="font-size:13px">Check it</span></div>
+          <div class="row"><span class="n">3</span><span>Your yearly bill of CHF 900 is due in April</span><span class="sm">you said</span></div>
+        </div>
+      </div>
+      <div class="dock"><div style="display:flex;justify-content:space-between"><span class="lnk">How sure is this?</span><span class="lnk">Show the math</span></div></div>
+    </div></div>
+    <p class="ph-label">6 · April, opened from the finding (Explore)</p>
+  </div>
+  <div class="audit">
+    <div class="q"><b>Doing</b><span>Understanding why April.</span><b>Must get</b><span>Three causes, one of which I can check.</span><b>Next</b><span>Check the deposit.</span></div>
+    <div class="tw"><table><thead><tr><th>Element</th><th>Class</th><th>Why</th></tr></thead><tbody>
+      <tr><td>Big amount in bronze + one bar to the cushion</td><td><span class="tag e">Essential</span></td><td>One number, one comparison. Bronze means “tight”, red stays for actions.</td></tr>
+      <tr><td>Three causes, ranked</td><td><span class="tag e">Essential</span></td><td>From the engine's worst-case witness and <code>evidence</code>; the unknown with the biggest effect gets “Check it” (core <code>rankUnknowns</code>).</td></tr>
+      <tr><td>How sure / Show the math</td><td><span class="tag c">Contextual</span></td><td>Doors to Verify; quiet links at the bottom.</td></tr>
+      <tr><td>Month table, all scenarios</td><td><span class="tag u">Removed</span></td><td>Available in “Show the math” for this month only.</td></tr>
+    </tbody></table></div>
+    <p class="muted" style="font-size:14px"><b>Motion:</b> the finding's button expands into this view (shared-element container transform) so the person sees April came from the sentence they tapped. Reduced motion: a plain cross-fade.</p>
+  </div>
+</section>
+
+<!-- 7 -->
+<section class="moment">
+  <div>
+    <div class="ph"><div class="sc">
+      <div class="sb"><span>18:12</span><span>▮▮▮</span></div>
+      <div class="bd" style="opacity:.55">
+        <div class="top"><span class="bk">‹ Moving out in January</span></div>
+        <div class="big t">CHF 300</div>
+      </div>
+      <div class="scrim"></div>
+      <div class="sheet">
+        <div class="grab"></div>
+        <h3 style="font-size:18px;font-weight:600">Your rental deposit</h3>
+        <p class="sm">You said between CHF 1,300 and CHF 1,700. Routes tried every amount. Up to CHF 1,500, April stays at or above your cushion.</p>
+        <div><div class="rng"><span class="tr"></span><span class="mk"></span><span class="kn"></span></div><div class="rax"><span>1,300</span><span>1,500</span><span>1,700</span></div></div>
+        <div class="field">CHF 1,450</div>
+        <p style="font-size:14.5px">April would end with <b>CHF 550</b>.</p>
+        <div class="two"><div class="btn s">Just trying</div><div class="btn p">That's the real amount</div></div>
+      </div>
+    </div></div>
+    <p class="ph-label">7 · Check the deposit (bottom sheet)</p>
+  </div>
+  <div class="audit">
+    <div class="q"><b>Doing</b><span>Filling in the one unknown that matters.</span><b>Must get</b><span>Where the line is (CHF 1,500), and the difference between trying and confirming.</span><b>Next</b><span>Confirm the real amount.</span></div>
+    <div class="tw"><table><thead><tr><th>Element</th><th>Class</th><th>Why</th></tr></thead><tbody>
+      <tr><td>Range with the threshold mark</td><td><span class="tag e">Essential</span></td><td>Core searches the stated bounds; the threshold is computed, not drawn by hand.</td></tr>
+      <tr><td>Live preview “April would end with…”</td><td><span class="tag e">Essential</span></td><td>Immediate feedback while typing or dragging, from the engine.</td></tr>
+      <tr><td>Just trying / That's the real amount</td><td><span class="tag e">Essential</span></td><td>Two different engine calls: <code>explore(WhatIfInput)</code> (labelled ASSUMED) vs <code>correct(AnswerInput)</code> (USER_STATED). Mixing them would let a guess look like a fact.</td></tr>
+    </tbody></table></div>
+    <p class="muted" style="font-size:14px">A bottom sheet keeps April visible behind it, so the person never loses where they were. Back or swipe down closes it without changing anything.</p>
+  </div>
+</section>
+
+<!-- 8 -->
+<section class="moment">
+  <div>
+    <div class="ph"><div class="sc">
+      <div class="sb"><span>18:12</span><span>▮▮▮</span></div>
+      <div class="bd">
+        <div class="top"><span class="bk">‹ Moving out in January</span></div>
+        <span class="note">Updated with your deposit · earlier version kept</span>
+        <div class="big">CHF 550</div>
+        <p class="sm" style="margin-top:-6px">left at the end of April, in the hardest case Routes tried</p>
+        <div class="meter"><i class="n" style="width:36.7%"></i><b style="left:33.3%"></b><em style="left:33.3%">CHF 500 cushion</em></div>
+        <p class="sm">CHF 50 above your cushion. Before: CHF 300.</p>
+        <p style="font-size:14.5px"><b>Why it changed:</b> the deposit is CHF 250 less than the highest amount Routes had to assume, so CHF 250 more stays in your account.</p>
+        <div class="rows">
+          <div class="row ok"><span class="n">2</span><span>The deposit is CHF 1,450. You confirmed it.</span><span class="sm">you said</span></div>
+        </div>
+      </div>
+      <div class="dock"><div class="btn s">See your other paths</div></div>
+    </div></div>
+    <p class="ph-label">8 · Updated in place</p>
+  </div>
+  <div class="audit">
+    <div class="q"><b>Doing</b><span>Seeing what their correction did.</span><b>Must get</b><span>The number moved, and why.</span><b>Next</b><span>Compare other paths with the same facts.</span></div>
+    <div class="tw"><table><thead><tr><th>Element</th><th>Class</th><th>Why</th></tr></thead><tbody>
+      <tr><td>Number animates 300 → 550, bar turns from bronze to ink</td><td><span class="tag e">Essential</span></td><td>Shows what changed without resetting the screen.</td></tr>
+      <tr><td>“Why it changed” sentence</td><td><span class="tag e">Essential</span></td><td>Core <code>UpdateExplanation</code> / <code>OutcomeChange</code> already returns before and after.</td></tr>
+      <tr><td>“Earlier version kept”</td><td><span class="tag c">Contextual</span></td><td>The core keeps the old node; tapping it reopens it.</td></tr>
+    </tbody></table></div>
+  </div>
+</section>
+
+<!-- 9 -->
+<section class="moment">
+  <div>
+    <div class="ph"><div class="sc">
+      <div class="sb"><span>18:13</span><span>▮▮▮</span></div>
+      <div class="bd" style="opacity:.55">
+        <div class="top"><span class="bk">‹ Moving out in January</span></div>
+        <div class="big">CHF 550</div>
+      </div>
+      <div class="scrim"></div>
+      <div class="sheet">
+        <div class="grab"></div>
+        <div style="display:flex;justify-content:space-between;align-items:baseline"><h3 style="font-size:18px">CHF 550 in April</h3><span class="pv">calculated</span></div>
+        <p class="sm">Cash left at the end of April if your pay is CHF 800 lower in January and February. Not a prediction.</p>
+        <div class="math">
+          <span>End of March</span><b>CHF 1,200</b>
+          <span>Pay in April <span class="pv">you said</span></span><b>+ 2,600</b>
+          <span>Living costs <span class="pv">about</span></span><b>− 2,350</b>
+          <span>Yearly bill <span class="pv">you said</span></span><b>− 900</b>
+          <span class="tot">End of April</span><b class="tot">CHF 550</b>
+        </div>
+        <div style="display:flex;justify-content:space-between"><span class="lnk">Change a value</span><span class="lnk">Every month</span></div>
+      </div>
+    </div></div>
+    <p class="ph-label">9 · Where a number comes from (Verify)</p>
+  </div>
+  <div class="audit">
+    <div class="q"><b>Doing</b><span>Checking whether to trust a number.</span><b>Must get</b><span>What it means, what it's made of, and which parts are mine.</span><b>Next</b><span>Correct an input, or close.</span></div>
+    <div class="tw"><table><thead><tr><th>Element</th><th>Class</th><th>Why</th></tr></thead><tbody>
+      <tr><td>Meaning in one sentence</td><td><span class="tag e">Essential</span></td><td>Understand before Verify.</td></tr>
+      <tr><td>The month's arithmetic, with a source on every line</td><td><span class="tag e">Essential</span></td><td>From core <code>MonthRecord</code>; the lines add up because the engine reconciles every month.</td></tr>
+      <tr><td>Retrieved date and link</td><td><span class="tag c">Contextual</span></td><td>Shown only for EXTERNAL_SOURCE values (Lausanne rent research); Alex's numbers have none, so none is shown.</td></tr>
+    </tbody></table></div>
+    <p class="muted" style="font-size:14px">Opened by tapping any amount anywhere in the app. One sheet design for every number.</p>
+  </div>
+</section>
+
+<!-- 10 -->
+<section class="moment">
+  <div>
+    <div class="ph"><div class="sc">
+      <div class="sb"><span>18:14</span><span>▮▮▮</span></div>
+      <div class="bd">
+        <div class="top"><span class="bk">‹ Moving out in January</span></div>
+        <div class="ttl" style="font-size:26px">Other paths, with the same facts</div>
+        <div>
+          <div class="path"><b>Move out in January</b><span class="sm">lowest CHF 550</span><span>You're here · no tight months</span></div>
+          <div class="path"><b>Wait until March</b><span class="sm">lowest …</span><span>No tight months</span></div>
+          <div class="path"><b>Stay at home</b><span class="sm">lowest …</span><span>More left in June</span></div>
+        </div>
+        <div style="background:var(--chalk);padding:12px;border-radius:3px;display:grid;gap:8px">
+          <p style="font-size:14.5px">Before the deposit was confirmed, Routes found a way to keep April above the cushion: spend <b>[amount from engine]</b> less each month.</p>
+          <div class="two"><div class="btn s" style="height:40px;font-size:14px">Try it</div><div class="btn s" style="height:40px;font-size:14px">Not for me</div></div>
+        </div>
+        <p class="sm"><b>After “Not for me”:</b> “Got it. Routes won't suggest cuts of this size again.” Reason chips: <i>I support family · I can't cut more · Other</i>.</p>
+      </div>
+    </div></div>
+    <p class="ph-label">10 · Other paths, and saying no</p>
+  </div>
+  <div class="audit">
+    <div class="q"><b>Doing</b><span>Seeing alternatives; turning down advice that doesn't fit their life.</span><b>Must get</b><span>Other choices exist, and no means no.</span><b>Next</b><span>Open a path, or reject a suggestion.</span></div>
+    <div class="tw"><table><thead><tr><th>Element</th><th>Class</th><th>Why</th></tr></thead><tbody>
+      <tr><td>Paths as rows: name, one status, lowest cash</td><td><span class="tag e">Essential</span></td><td>Core <code>compareBranches</code>; a list reads on a phone, side-by-side charts don't.</td></tr>
+      <tr><td>Suggestion with “Not for me”</td><td><span class="tag c">Contextual</span></td><td>Only when the engine offers a repair. “Not for me” sends <code>RejectRepair(THIS_AMOUNT_OR_MORE)</code>; the core then never re-offers it.</td></tr>
+      <tr><td>“Lowest …” for Wait and Stay, repair amount</td><td><span class="tag c">From engine</span></td><td>Left blank in the drawing on purpose: I haven't run these yet and won't invent them.</td></tr>
+    </tbody></table></div>
+  </div>
+</section>
+
+<section>
+  <div style="display:grid;gap:6px"><p class="k">Against the approved identity</p><h2>Same brand, different job</h2></div>
+  <div class="tw"><table>
+    <thead><tr><th>Identity rule (Routes × UBS)</th><th>Phone</th></tr></thead>
+    <tbody>
+      <tr><td>White, near-black ink #1C1C1C, Chalk #F9F9F7 surfaces</td><td>Same tokens. Chalk marks rows and the user's own words.</td></tr>
+      <tr><td>Red #E60000 = act here, and the mark</td><td>One red button per screen at most; links in #DA0000, underlined.</td></tr>
+      <tr><td>Bronze #86671D / #AF8626 = below the cushion</td><td>The April amount and bar. Never red for a tight month.</td></tr>
+      <tr><td>Pale gold #F1E2BC = the one thing that matters; confirmed facts</td><td>Highlighter on the finding; confirmed deposit row.</td></tr>
+      <tr><td>Source Sans 3 Light headlines</td><td>Bundle Source Sans 3 (SIL OFL) in Android resources. Desktop currently falls back to Segoe UI, so the two may differ until fonts are shared.</td></tr>
+      <tr><td>3–4px corners, no shadows</td><td>Same, except the bottom sheet's top corners (6px) so it reads as a sheet.</td></tr>
+    </tbody>
+  </table></div>
+  <div class="tw"><table>
+    <thead><tr><th></th><th>Desktop (Developer A)</th><th>Android (this branch)</th></tr></thead>
+    <tbody>
+      <tr><td>Role</td><td>Visual workspace: see the whole six months and compare.</td><td>Companion: talk, one finding, one question, quick corrections.</td></tr>
+      <tr><td>Timeline</td><td>Month strip always visible.</td><td>No chart. One month at a time; “Every month” is a list inside Verify.</td></tr>
+      <tr><td>Detail</td><td>Opens in place on a large canvas.</td><td>Full-screen level for Explore, bottom sheet for Verify and edits.</td></tr>
+      <tr><td>Entry</td><td>Starts from a decision.</td><td>Starts from the person (onboarding), then a decision.</td></tr>
+      <tr><td>Independent?</td><td>Yes</td><td>Yes: explore, change, reject, confirm, verify and revisit all work on the phone alone.</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section>
+  <div style="display:grid;gap:6px"><p class="k">Minimum feasible build</p><h2>What Phase B would build, and what it wouldn't</h2></div>
+  <div class="tw"><table>
+    <thead><tr><th>Piece</th><th>Built from</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td>Phone screens 3–10 on the Alex session</td><td><code>SampleData.alexEvolvingSession</code>, <code>startGraph</code>, <code>briefing</code>, <code>correct</code>, <code>explore</code>, <code>compareBranches</code></td><td>All in core on main. New Compose code only.</td></tr>
+      <tr><td>Phone state holder (current node, level, open sheet)</td><td>New <code>PhoneJourney</code> in composeApp/commonMain, unit-tested on JVM</td><td>New. No financial maths in it.</td></tr>
+      <tr><td>Finding sentence, causes, live deposit preview</td><td>Developer A's <code>RoutesJourney.kt</code> (keyMoment, causes, preview)</td><td><b>Uncommitted</b> in Developer A's working tree. I'd rather reuse it than write a second one, so I need it committed first.</td></tr>
+      <tr><td>Design tokens</td><td>Developer A's <code>Rt</code> object</td><td>Lives in jvmMain (desktop only). Proposal: move to commonMain in one small commit by Developer A; until then the phone has its own copy with the same values.</td></tr>
+      <tr><td>Onboarding (1–2) by text</td><td>Chips and amount fields that build a <code>FinancialProfile</code></td><td>New, deterministic. Free text understood only for a few phrases.</td></tr>
+      <tr><td>Voice</td><td>Marwa's Gemini Live on <code>ui/my-future</code></td><td><b>Not included</b> unless we decide to merge it and I can see it work. Mic shows as unavailable.</td></tr>
+      <tr><td>Saving across restarts</td><td>Nothing yet</td><td><b>Not included.</b> History lasts while the app is open.</td></tr>
+      <tr><td>Desktop files</td><td>None</td><td>Untouched. <code>MainActivity</code> switches from <code>App()</code> to <code>PhoneApp()</code>.</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section>
+  <div class="rec">
+    <p class="k">Decisions needed before Phase B (updated for three spaces)</p>
+    <p><b>1. Approve the three-space direction</b> (Explore · My Routes · My Twin), or mark what to change.</p>
+    <p><b>2. Bring in Marwa's voice code.</b> The plan is to merge her Gemini Live files and <code>FinancialTwinController</code> from <code>ui/my-future</code> into this branch, keeping her code and authorship, and add the new tool calls on top. Her own screens stay on her branch.</p>
+    <p><b>3. Gemini key and token service.</b> Voice only works if <code>speech-token-service</code> runs with a key on the demo machine. Without them, I'll ship text plus chips and show the mic as unavailable.</p>
+    <p><b>Resolved since the first draft:</b> <code>RoutesJourney.kt</code> is now committed on main (55b5ce3), so the phone reuses it. The branch will be rebased onto that commit. Name: Routes.</p>
+  </div>
+</section>
+
+</div>
