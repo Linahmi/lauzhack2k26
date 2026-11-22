@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
     <queries>
         <intent>
@@ -9,6 +11,7 @@
     </queries>
     <!-- allowBackup=false: the session file stays on this phone, as My Twin says. -->
     <application
+        android:usesCleartextTraffic="false"
         android:allowBackup="false"
         android:label="Routes"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
