@@ -192,6 +192,11 @@ data class UnknownImpact(
         p.isNotEmpty() && p == worstMinimumCashByValue.map { it.first }.take(p.size)
     }?.last()
 
+    /** Smallest value that passes, if the passing values are exactly that value..high (e.g. more income, a later start). */
+    val passesFrom: Chf? get() = passingValues.takeIf { p ->
+        p.isNotEmpty() && p == worstMinimumCashByValue.map { it.first }.takeLast(p.size)
+    }?.first()
+
     /** Spread of worst-case cash across the range. */
     val swing: Chf get() = worstMinimumCashByValue.maxOf { it.second } - worstMinimumCashByValue.minOf { it.second }
 }
