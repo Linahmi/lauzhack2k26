@@ -60,7 +60,7 @@ fun TwinScreen(session: RoutesSession, nav: PhoneNav, platform: PhonePlatform) {
             }
             Column(Modifier.fillMaxWidth().border(1.dp, Tk.Line, Tk.Card).padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("What Routes remembers", style = Ty.Strong)
-                Text("Saved on this phone only: the facts below, your decisions and every change you made to them. Not saved: voice recordings or the words of the conversation. Nothing is sent to a server or synced.", style = Ty.Small)
+                Text("Saved on this phone only: the facts below, your decisions and every change you made to them. This app does not save voice recordings or a conversation log. Your session is not synced. When you use Live voice, audio and the app's replies are sent to Google for transcription and speech.", style = Ty.Small)
                 Text("Facts you said or typed are recorded as you gave them, and you can see where each came from, correct it or forget it here.", style = Ty.Small)
                 if (confirmForget) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Primary("Forget everything", Modifier.weight(1f)) { session.forgetEverything(); confirmForget = false }

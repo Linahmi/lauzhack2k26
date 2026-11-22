@@ -25,6 +25,8 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import ch.ripple.app.assistant.SpeechCapability
@@ -32,6 +34,12 @@ import ch.ripple.app.assistant.SpeechEvent
 import ch.ripple.app.assistant.SpeechRoute
 import ch.ripple.app.assistant.SpeechInput
 import ch.ripple.app.assistant.TypedInputOnly
+import ch.ripple.app.assistant.LiveConversation
+import ch.ripple.app.assistant.LivePhase
+import ch.ripple.app.assistant.NoLiveVoice
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 
 enum class Space(val label: String) { EXPLORE("Explore"), ROUTES("My Routes"), TWIN("My Twin") }
 
@@ -42,6 +50,8 @@ class PhonePlatform(
     val timeText: (Long) -> String = { "" },
     /** System back: (enabled, onBack). */
     val backHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> },
+    val live: LiveConversation = NoLiveVoice,
+    val canCapture: () -> Boolean = { true },
 )
 
 class PhoneNav {
@@ -54,7 +64,15 @@ class PhoneNav {
 @Composable
 fun PhoneApp(session: RoutesSession, platform: PhonePlatform) {
     val nav = remember { PhoneNav() }
-    val voice = remember { VoiceState(platform.speech) }
+    val scope = rememberCoroutineScope()
+    val bridge = remember(session, platform.live) { RoutesVoiceBridge(session, platform.live) }
+    val voice = remember(platform, bridge) { VoiceState(platform.speech, platform.live, scope, bridge::handleTranscript, platform.canCapture) }
+    DisposableEffect(bridge, voice) {
+        bridge.attach()
+        onDispose { bridge.detach(); voice.stop() }
+    }
+    LaunchedEffect(session.turns, session.pending) { bridge.speakNewTurns() }
+    LaunchedEffect(platform.live.state.error) { voice.liveFailed() }
     MaterialTheme(colorScheme = lightColorScheme(primary = Tk.Ink, background = Tk.White, surface = Tk.White)) {
         Column(Modifier.fillMaxSize().background(Tk.White).safeDrawingPadding()) {
             Box(Modifier.weight(1f).fillMaxWidth()) {
@@ -113,8 +131,36 @@ private fun NavIcon(s: Space, c: Color) = Canvas(Modifier.size(20.dp)) {
 
 // ------------------------------------------------------------ voice + text input, shared by Explore and My Routes
 
-/** Speech-to-text only (Android's recognizer). No audio is stored; the words go to the same parser as typing. */
-class VoiceState(val speech: SpeechInput) {
+/** Live hearing/readout with a capability-checked Android recognizer fallback. No audio is saved. */
+class VoiceState(val speech: SpeechInput, val live: LiveConversation, private val scope: CoroutineScope,
+    private val onVoiceText: (String) -> Unit,
+    private val canCapture: () -> Boolean = { true }) {
+    private var connectJob: Job? = null
+    private var triedLive = false
+    var checking by mutableStateOf(false); private set
+    val active: Boolean get() = checking || listening || live.state.connected || live.state.phase == LivePhase.Connecting
+    val status: String? get() = when {
+        checking || live.state.phase == LivePhase.Connecting -> "Connecting to Live voice…"
+        live.state.phase == LivePhase.Speaking -> "Routes is speaking"
+        live.state.phase == LivePhase.Thinking -> "Preparing the app's reply…"
+        live.state.phase == LivePhase.Listening -> "Listening…"
+        live.state.phase == LivePhase.SpeakerMuted -> "Speaker muted · raise the call volume to hear Routes"
+        live.state.phase == LivePhase.MicrophoneMuted -> "Microphone paused"
+        else -> null
+    }
+    fun stop() {
+        connectJob?.cancel(); connectJob = null; checking = false; triedLive = false
+        speech.cancel(); listening = false; heard = ""; live.end()
+    }
+
+    fun liveFailed() {
+        val error = live.state.error ?: return
+        problem = "Live voice unavailable: $error You can type."
+        if (triedLive && !live.state.permissionDenied) {
+            triedLive = false
+            startRecognizer()
+        }
+    }
     /** On-device recognition isn't ready but Android's system service is: offer it, with its privacy note. */
     val canUseSystem: Boolean get() = speech.state.route == SpeechRoute.ON_DEVICE && !speech.state.canRecord &&
         speech.state.system in setOf(SpeechCapability.READY, SpeechCapability.UNKNOWN)
@@ -124,11 +170,28 @@ class VoiceState(val speech: SpeechInput) {
     var heard by mutableStateOf("")
     var problem by mutableStateOf<String?>(null)
 
-    fun toggle(onText: (String) -> Unit) {
-        if (listening) { speech.stop(); return }
+    fun toggle() {
+        if (active) { stop(); return }
         problem = null
+        checking = true
+        connectJob = scope.launch {
+            try {
+                val reason = live.unavailableReason()
+                if (!canCapture()) return@launch
+                if (reason == null && live.available) {
+                    speech.cancel(); triedLive = true; live.start("")
+                } else {
+                    problem = "Live voice unavailable: ${reason ?: "not configured"}. You can type."
+                    startRecognizer()
+                }
+            } finally { checking = false }
+        }
+    }
+
+    private fun startRecognizer() {
+        if (!canCapture()) return
         if (!speech.available) {
-            problem = "Voice isn't available on this device (no speech recognizer). Type instead; it does exactly the same."
+            problem = (problem.orEmpty() + " Android speech recognition is also unavailable. You can type.").trim()
             return
         }
         heard = ""
@@ -136,8 +199,8 @@ class VoiceState(val speech: SpeechInput) {
         speech.start { e ->
             when (e) {
                 is SpeechEvent.Partial -> heard = e.text
-                is SpeechEvent.Result -> { listening = false; heard = ""; onText(e.text) }
-                is SpeechEvent.Failure -> { listening = false; problem = e.message }
+                is SpeechEvent.Result -> { listening = false; heard = ""; onVoiceText(e.text) }
+                is SpeechEvent.Failure -> { listening = false; problem = listOfNotNull(problem, e.message).joinToString(" ") }
                 else -> Unit
             }
         }
@@ -149,6 +212,8 @@ fun Composer(voice: VoiceState, hint: String, onSend: (String, Via) -> Unit) {
     var text by remember { mutableStateOf("") }
     fun send() { if (text.isNotBlank()) { voice.problem = null; onSend(text, Via.TEXT); text = "" } }
     Column(Modifier.fillMaxWidth().background(Tk.White).padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        voice.status?.let { Text(it, style = Ty.Small, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }) }
+        if (!voice.active && voice.problem == null) Text("Live voice sends audio and app replies to Google. You can always type instead.", style = Ty.Small)
         voice.problem?.let { Row(verticalAlignment = Alignment.CenterVertically) {
             Text(it, style = Ty.Small.copy(color = Tk.Bronze), modifier = Modifier.weight(1f))
             LinkText("Hide") { voice.problem = null }
@@ -170,12 +235,12 @@ fun Composer(voice: VoiceState, hint: String, onSend: (String, Via) -> Unit) {
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Box(
-                Modifier.size(48.dp).background(if (voice.listening) Tk.Ink else Tk.Red, Tk.R)
-                    .clickable(role = Role.Button) { voice.toggle { onSend(it, Via.VOICE) } }
-                    .semantics { contentDescription = if (voice.listening) "Stop listening" else "Speak" },
+                Modifier.size(48.dp).background(if (voice.active) Tk.Ink else Tk.Red, Tk.R)
+                    .clickable(role = Role.Button) { voice.toggle() }
+                    .semantics { contentDescription = if (voice.active) "Stop voice" else "Speak" },
                 contentAlignment = Alignment.Center,
             ) {
-                if (voice.listening) Box(Modifier.size(14.dp).background(Color.White)) else NavIcon(Space.EXPLORE, Color.White)
+                if (voice.active) Box(Modifier.size(14.dp).background(Color.White)) else NavIcon(Space.EXPLORE, Color.White)
             }
             Box(Modifier.weight(1f).heightIn(min = 48.dp).border(1.dp, Tk.Line, Tk.R).padding(horizontal = 12.dp), contentAlignment = Alignment.CenterStart) {
                 if (text.isEmpty()) Text(hint, style = Ty.Body.copy(color = Tk.Ink2))
