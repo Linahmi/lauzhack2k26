@@ -23,12 +23,22 @@ fun main() = application {
     // Desktop has no portable "reduce motion" signal: the View menu (or ROUTES_REDUCE_MOTION=1) turns transitions off.
     var reduceMotion by remember { mutableStateOf(System.getenv("ROUTES_REDUCE_MOTION") == "1") }
     var esc by remember { mutableStateOf(0) }
+    val appearance = remember { AppearanceSetting(PrefsAppearanceStore()) }
     Window(
         onCloseRequest = ::exitApplication, state = state, title = "Routes",
         onPreviewKeyEvent = { if (it.key == Key.Escape && it.type == KeyEventType.KeyDown) { esc++; true } else false },
     ) {
         LaunchedEffect(Unit) { window.minimumSize = Dimension(980, 700) }
-        MenuBar { Menu("View") { CheckboxItem("Reduce motion", reduceMotion, onCheckedChange = { reduceMotion = it }) } }
-        RoutesApp(reduceMotion, esc)
+        MenuBar {
+            Menu("View") {
+                CheckboxItem("Reduce motion", reduceMotion, onCheckedChange = { reduceMotion = it })
+                Separator()
+                // Only colours change: the decision being explored and every number stay exactly as they are.
+                listOf(Appearance.SYSTEM to "Appearance: like Windows", Appearance.LIGHT to "Appearance: light", Appearance.DARK to "Appearance: dark").forEach { (a, label) ->
+                    RadioButtonItem(label, selected = appearance.value == a, onClick = { appearance.choose(a) })
+                }
+            }
+        }
+        RoutesApp(reduceMotion, esc, appearance = appearance.value)
     }
 }

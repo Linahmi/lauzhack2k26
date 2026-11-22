@@ -13,6 +13,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -52,6 +53,8 @@ class PhonePlatform(
     val backHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> },
     val live: LiveConversation = NoLiveVoice,
     val canCapture: () -> Boolean = { true },
+    /** Light / Dark / follow the phone; saved by the platform. */
+    val appearance: ch.ripple.app.AppearanceSetting = ch.ripple.app.AppearanceSetting(ch.ripple.app.MemoryAppearanceStore()),
 )
 
 class PhoneNav {
@@ -63,6 +66,7 @@ class PhoneNav {
 /** The Android entry point: three spaces over one shared [RoutesSession]. */
 @Composable
 fun PhoneApp(session: RoutesSession, platform: PhonePlatform) {
+    ch.ripple.app.ApplyAppearance(platform.appearance.value)
     val nav = remember { PhoneNav() }
     val scope = rememberCoroutineScope()
     val bridge = remember(session, platform.live) { RoutesVoiceBridge(session, platform.live) }
@@ -73,7 +77,8 @@ fun PhoneApp(session: RoutesSession, platform: PhonePlatform) {
     }
     LaunchedEffect(session.turns, session.pending) { bridge.speakNewTurns() }
     LaunchedEffect(platform.live.state.error) { voice.liveFailed() }
-    MaterialTheme(colorScheme = lightColorScheme(primary = Tk.Ink, background = Tk.White, surface = Tk.White)) {
+    MaterialTheme(colorScheme = if (Tk.Red == ch.ripple.app.RoutesPalettes.Dark.red) darkColorScheme(primary = Tk.Ink, background = Tk.White, surface = Tk.White, onSurface = Tk.Ink, onBackground = Tk.Ink)
+        else lightColorScheme(primary = Tk.Ink, background = Tk.White, surface = Tk.White)) {
         Column(Modifier.fillMaxSize().background(Tk.White).safeDrawingPadding()) {
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 when (nav.space) {
@@ -240,7 +245,7 @@ fun Composer(voice: VoiceState, hint: String, onSend: (String, Via) -> Unit) {
                     .semantics { contentDescription = if (voice.active) "Stop voice" else "Speak" },
                 contentAlignment = Alignment.Center,
             ) {
-                if (voice.active) Box(Modifier.size(14.dp).background(Color.White)) else NavIcon(Space.EXPLORE, Color.White)
+                if (voice.active) Box(Modifier.size(14.dp).background(Tk.White)) else NavIcon(Space.EXPLORE, Tk.OnRed)
             }
             Box(Modifier.weight(1f).heightIn(min = 48.dp).border(1.dp, Tk.Line, Tk.R).padding(horizontal = 12.dp), contentAlignment = Alignment.CenterStart) {
                 if (text.isEmpty()) Text(hint, style = Ty.Body.copy(color = Tk.Ink2))
@@ -256,7 +261,7 @@ fun Composer(voice: VoiceState, hint: String, onSend: (String, Via) -> Unit) {
 /** A focused view over the current screen (bottom sheet without the motion). */
 @Composable
 fun Sheet(title: String, onClose: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
-    Box(Modifier.fillMaxSize().background(Color(0x521C1C1C)).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onClose)) {
+    Box(Modifier.fillMaxSize().background(Tk.Scrim).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onClose)) {
         Column(
             Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(0.86f)
                 .background(Tk.White, androidx.compose.foundation.shape.RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp))

@@ -23,26 +23,27 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-/**
- * Routes × UBS tokens, the same values as the desktop's Rt (docs/DECISIONS.md, 2026-11-22).
- * shortcut: copied because the desktop's object is jvm-only; merge into one commonMain object
- * when the desktop owner moves theirs.
- */
+/** Routes tokens for the phone: the shared semantic palette (ch.ripple.app.RoutesPalette). */
 object Tk {
-    val Ink = Color(0xFF1C1C1C)
-    val Ink2 = Color(0xFF5A5D5C)
-    val Line = Color(0xFFE0DED6)
-    val Chalk = Color(0xFFF9F9F7)
-    val Track = Color(0xFFECEAE3)
-    val White = Color(0xFFFFFFFF)
+    private val p get() = ch.ripple.app.RoutesTheme.palette
+    val Ink get() = p.ink
+    val Ink2 get() = p.ink2
+    val Line get() = p.line
+    val Chalk get() = p.surface
+    val Track get() = p.track
+    /** The page background (white in light mode). */
+    val White get() = p.background
     /** Main action and the Routes mark only. */
-    val Red = Color(0xFFE60000)
-    val LinkRed = Color(0xFFDA0000)
+    val Red get() = p.red
+    /** Text and icons on [Red]. */
+    val OnRed get() = p.onRed
+    val LinkRed get() = p.linkRed
     /** Below the cushion, and what-ifs. */
-    val Bronze = Color(0xFF86671D)
-    val BronzeBar = Color(0xFFAF8626)
+    val Bronze get() = p.bronze
+    val BronzeBar get() = p.bronzeBar
     /** The one finding; confirmed facts. */
-    val Gold = Color(0xFFF1E2BC)
+    val Gold get() = p.gold
+    val Scrim get() = p.scrim
     val R = RoundedCornerShape(3.dp)
     val Card = RoundedCornerShape(4.dp)
 }
@@ -51,18 +52,18 @@ object Tk {
 private val F = FontFamily.SansSerif
 
 object Ty {
-    val Title = TextStyle(fontFamily = F, fontWeight = FontWeight.Light, fontSize = 28.sp, lineHeight = 34.sp, color = Tk.Ink)
-    val Finding = TextStyle(fontFamily = F, fontWeight = FontWeight.Light, fontSize = 22.sp, lineHeight = 30.sp, color = Tk.Ink)
-    val Big = TextStyle(fontFamily = F, fontWeight = FontWeight.Light, fontSize = 34.sp, lineHeight = 40.sp, color = Tk.Ink)
-    val Body = TextStyle(fontFamily = F, fontWeight = FontWeight.Normal, fontSize = 16.sp, lineHeight = 23.sp, color = Tk.Ink)
-    val Strong = Body.copy(fontWeight = FontWeight.SemiBold)
-    val Label = TextStyle(fontFamily = F, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, lineHeight = 19.sp, color = Tk.Ink2)
-    val Small = TextStyle(fontFamily = F, fontWeight = FontWeight.Normal, fontSize = 13.sp, lineHeight = 18.sp, color = Tk.Ink2)
-    val Button = TextStyle(fontFamily = F, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+    val Title get() = TextStyle(fontFamily = F, fontWeight = FontWeight.Light, fontSize = 28.sp, lineHeight = 34.sp, color = Tk.Ink)
+    val Finding get() = TextStyle(fontFamily = F, fontWeight = FontWeight.Light, fontSize = 22.sp, lineHeight = 30.sp, color = Tk.Ink)
+    val Big get() = TextStyle(fontFamily = F, fontWeight = FontWeight.Light, fontSize = 34.sp, lineHeight = 40.sp, color = Tk.Ink)
+    val Body get() = TextStyle(fontFamily = F, fontWeight = FontWeight.Normal, fontSize = 16.sp, lineHeight = 23.sp, color = Tk.Ink)
+    val Strong get() = Body.copy(fontWeight = FontWeight.SemiBold)
+    val Label get() = TextStyle(fontFamily = F, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, lineHeight = 19.sp, color = Tk.Ink2)
+    val Small get() = TextStyle(fontFamily = F, fontWeight = FontWeight.Normal, fontSize = 13.sp, lineHeight = 18.sp, color = Tk.Ink2)
+    val Button get() = TextStyle(fontFamily = F, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
 }
 
 /** Light grey of the routes not taken in the Routes logo. */
-val RouteGrey = Color(0xFFBDBBB0)
+val RouteGrey get() = ch.ripple.app.RoutesTheme.palette.routeGrey
 
 /**
  * The Routes logo mark: a starting point, three possible routes, the chosen one in red with a
@@ -79,13 +80,13 @@ fun RoutesMark(height: Int = 30, chosen: Color = Tk.Red, other: Color = RouteGre
         drawPath(branch(34f), other, style = line)
         drawLine(other, o(4f, 20f), o(36f, 20f), 3.6f * u, StrokeCap.Round)
         listOf(20f, 34f).forEach { y ->
-            drawCircle(Color.White, 3.2f * u, o(40.5f, y))
+            drawCircle(Tk.White, 3.2f * u, o(40.5f, y))
             drawCircle(other, 3.2f * u, o(40.5f, y), style = Stroke(2.4f * u))
         }
         // The chosen route, with its check.
         drawPath(branch(6f), chosen, style = line)
         drawCircle(chosen, 4.6f * u, o(40.5f, 6f))
-        drawPath(Path().apply { moveTo(38.4f * u, 6.3f * u); lineTo(40f * u, 7.9f * u); lineTo(42.8f * u, 4.6f * u) }, Color.White,
+        drawPath(Path().apply { moveTo(38.4f * u, 6.3f * u); lineTo(40f * u, 7.9f * u); lineTo(42.8f * u, 4.6f * u) }, Tk.OnRed,
             style = Stroke(1.6f * u, cap = StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round))
         drawCircle(Tk.Ink, 3.6f * u, o(4f, 20f))
     }
@@ -105,7 +106,7 @@ fun RoutesLockup(height: Int = 30) = androidx.compose.foundation.layout.Row(vert
 fun Primary(text: String, modifier: Modifier = Modifier, enabled: Boolean = true, onClick: () -> Unit) =
     Box(modifier.heightIn(min = 48.dp).background(if (enabled) Tk.Red else Tk.Track, Tk.R)
         .clickable(enabled = enabled, role = Role.Button, onClick = onClick).padding(horizontal = 14.dp),
-        contentAlignment = Alignment.Center) { Text(text, style = Ty.Button, color = if (enabled) Color.White else Tk.Ink2) }
+        contentAlignment = Alignment.Center) { Text(text, style = Ty.Button, color = if (enabled) Tk.OnRed else Tk.Ink2) }
 
 @Composable
 fun Secondary(text: String, modifier: Modifier = Modifier, onClick: () -> Unit) =

@@ -117,8 +117,12 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 @Composable
-fun RoutesApp(reduceMotion: Boolean = false, escPresses: Int = 0, plansDir: java.io.File? = null) {
-    MaterialTheme(colorScheme = lightColorScheme(primary = Rt.Ink, onPrimary = Rt.White, background = Rt.White, surface = Rt.White, onSurface = Rt.Ink, outline = Rt.Line)) {
+fun RoutesApp(reduceMotion: Boolean = false, escPresses: Int = 0, plansDir: java.io.File? = null, appearance: Appearance = Appearance.SYSTEM) {
+    ApplyAppearance(appearance)
+    val scheme = if (RoutesTheme.palette.isDark)
+        androidx.compose.material3.darkColorScheme(primary = Rt.Ink, onPrimary = Rt.White, background = Rt.White, surface = Rt.White, onSurface = Rt.Ink, onBackground = Rt.Ink, outline = Rt.Line, onSurfaceVariant = Rt.Ink2)
+    else lightColorScheme(primary = Rt.Ink, onPrimary = Rt.White, background = Rt.White, surface = Rt.White, onSurface = Rt.Ink, outline = Rt.Line)
+    MaterialTheme(colorScheme = scheme) {
         CompositionLocalProvider(LocalReduceMotion provides reduceMotion) { RoutesRoot(escPresses, plansDir) }
     }
 }
@@ -1063,7 +1067,7 @@ internal fun LinkText(text: String, onClick: () -> Unit) {
 internal fun PrimaryButton(text: String, enabled: Boolean = true, onClick: () -> Unit) {
     Button(
         onClick, Modifier.focusRing(), enabled = enabled, shape = Rt.Radius,
-        colors = ButtonDefaults.buttonColors(containerColor = Rt.Red, contentColor = Rt.White, disabledContainerColor = Rt.Track, disabledContentColor = Rt.Ink2),
+        colors = ButtonDefaults.buttonColors(containerColor = Rt.Red, contentColor = Rt.OnRed, disabledContainerColor = Rt.Track, disabledContentColor = Rt.Ink2),
         contentPadding = PaddingValues(horizontal = 18.dp, vertical = 10.dp),
     ) { Text(text, style = RtType.Button) }
 }

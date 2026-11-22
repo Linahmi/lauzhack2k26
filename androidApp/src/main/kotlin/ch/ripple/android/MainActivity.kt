@@ -40,11 +40,20 @@ class MainActivity : ComponentActivity() {
             beforeStart = { speechInput.cancel() })
         val timeFormat = DateFormat.getTimeFormat(this)
         val store = FileSessionStore(filesDir)
+        val appearance = ch.ripple.app.AppearanceSetting(PrefsAppearanceStore(getSharedPreferences("routes", MODE_PRIVATE)))
         setContent {
+            // Status and navigation bar icons follow the theme in use.
+            val dark = ch.ripple.app.RoutesTheme.palette.isDark
+            androidx.compose.runtime.SideEffect {
+                WindowCompat.getInsetsController(window, window.decorView).apply {
+                    isAppearanceLightStatusBars = !dark
+                    isAppearanceLightNavigationBars = !dark
+                }
+            }
             val session = remember { RoutesSession(store) { System.currentTimeMillis() } }
             val platform = remember {
                 PhonePlatform(speechInput, timeText = { timeFormat.format(Date(it)) }, backHandler = { enabled, onBack -> BackHandler(enabled, onBack) }, live = live,
-                    canCapture = { lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) })
+                    canCapture = { lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) }, appearance = appearance)
             }
             PhoneApp(session, platform)
         }

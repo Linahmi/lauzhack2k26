@@ -23,23 +23,27 @@ import androidx.compose.ui.unit.sp
 import ch.ripple.core.Chf
 import java.io.File
 
-/** Routes × UBS tokens, as locked in docs/DECISIONS.md (2026-11-22). */
+/** Routes tokens for the laptop: the shared semantic palette (RoutesPalette.kt, commonMain). */
 internal object Rt {
-    val Ink = Color(0xFF1C1C1C)
-    val Ink2 = Color(0xFF5A5D5C)
-    val Line = Color(0xFFE0DED6)
-    val Chalk = Color(0xFFF9F9F7)
-    val Track = Color(0xFFECEAE3)
-    val White = Color(0xFFFFFFFF)
+    private val p get() = RoutesTheme.palette
+    val Ink get() = p.ink
+    val Ink2 get() = p.ink2
+    val Line get() = p.line
+    val Chalk get() = p.surface
+    val Track get() = p.track
+    /** The page background (white in light mode). Also text on [Ink] fills. */
+    val White get() = p.background
     /** Main action and the Routes mark only. */
-    val Red = Color(0xFFE60000)
+    val Red get() = p.red
+    /** Text on [Red]. */
+    val OnRed get() = p.onRed
     /** Underlined contextual actions. */
-    val LinkRed = Color(0xFFDA0000)
+    val LinkRed get() = p.linkRed
     /** Money below the cushion: text and bar. */
-    val Bronze = Color(0xFF86671D)
-    val BronzeBar = Color(0xFFAF8626)
+    val Bronze get() = p.bronze
+    val BronzeBar get() = p.bronzeBar
     /** The one thing that matters; confirmed facts. */
-    val Gold = Color(0xFFF1E2BC)
+    val Gold get() = p.gold
     val Radius = RoundedCornerShape(3.dp)
     val CardRadius = RoundedCornerShape(4.dp)
 }
@@ -56,14 +60,14 @@ internal val RoutesFont: FontFamily = run {
 }
 
 internal object RtType {
-    val Title = TextStyle(fontFamily = RoutesFont, fontWeight = FontWeight.Light, fontSize = 52.sp, lineHeight = 58.sp, letterSpacing = (-0.5).sp, color = Rt.Ink)
-    val Finding = TextStyle(fontFamily = RoutesFont, fontWeight = FontWeight.Light, fontSize = 29.sp, lineHeight = 40.sp, color = Rt.Ink)
-    val Big = TextStyle(fontFamily = RoutesFont, fontWeight = FontWeight.Light, fontSize = 40.sp, lineHeight = 46.sp, color = Rt.Ink)
-    val Lead = TextStyle(fontFamily = RoutesFont, fontWeight = FontWeight.Normal, fontSize = 18.sp, lineHeight = 26.sp, color = Rt.Ink2)
-    val Body = TextStyle(fontFamily = RoutesFont, fontWeight = FontWeight.Normal, fontSize = 16.sp, lineHeight = 23.sp, color = Rt.Ink)
-    val Label = TextStyle(fontFamily = RoutesFont, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, lineHeight = 19.sp, color = Rt.Ink2)
-    val Small = TextStyle(fontFamily = RoutesFont, fontWeight = FontWeight.Normal, fontSize = 13.sp, lineHeight = 18.sp, color = Rt.Ink2)
-    val Button = TextStyle(fontFamily = RoutesFont, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+    val Title get() = TextStyle(fontFamily = RoutesFont, fontWeight = FontWeight.Light, fontSize = 52.sp, lineHeight = 58.sp, letterSpacing = (-0.5).sp, color = Rt.Ink)
+    val Finding get() = TextStyle(fontFamily = RoutesFont, fontWeight = FontWeight.Light, fontSize = 29.sp, lineHeight = 40.sp, color = Rt.Ink)
+    val Big get() = TextStyle(fontFamily = RoutesFont, fontWeight = FontWeight.Light, fontSize = 40.sp, lineHeight = 46.sp, color = Rt.Ink)
+    val Lead get() = TextStyle(fontFamily = RoutesFont, fontWeight = FontWeight.Normal, fontSize = 18.sp, lineHeight = 26.sp, color = Rt.Ink2)
+    val Body get() = TextStyle(fontFamily = RoutesFont, fontWeight = FontWeight.Normal, fontSize = 16.sp, lineHeight = 23.sp, color = Rt.Ink)
+    val Label get() = TextStyle(fontFamily = RoutesFont, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, lineHeight = 19.sp, color = Rt.Ink2)
+    val Small get() = TextStyle(fontFamily = RoutesFont, fontWeight = FontWeight.Normal, fontSize = 13.sp, lineHeight = 18.sp, color = Rt.Ink2)
+    val Button get() = TextStyle(fontFamily = RoutesFont, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
 }
 
 /** Set from the View menu. When true every transition is instant. */

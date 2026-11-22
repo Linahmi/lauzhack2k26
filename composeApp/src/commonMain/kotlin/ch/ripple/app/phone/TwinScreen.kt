@@ -1,5 +1,7 @@
 package ch.ripple.app.phone
 
+import androidx.compose.foundation.background
+
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -118,6 +120,7 @@ fun TwinScreen(session: RoutesSession, nav: PhoneNav, platform: PhonePlatform) {
             Group("History", "${history.size} changes", open == "hist", { open = if (open == "hist") null else "hist" }) {
                 history.forEach { (at, text) -> Text("${platform.timeText(at)}  $text", style = Ty.Body) }
             }
+            AppearanceRow(platform.appearance)
             Legal()
         }
         fact?.let { f -> Sheet(factTitle(session, f), { fact = null }) { FactDetail(session, f, platform) { fact = null } } }
@@ -223,4 +226,23 @@ private fun historyLines(session: RoutesSession): List<Pair<Long, String>> {
         }
     }
     return (profile + decisions).sortedByDescending { it.first }
+}
+
+/** Light, dark or the phone's own setting. Only colours change; the decision and its numbers stay. */
+@androidx.compose.runtime.Composable
+private fun AppearanceRow(setting: ch.ripple.app.AppearanceSetting) {
+    androidx.compose.foundation.layout.Column(androidx.compose.ui.Modifier.padding(vertical = 8.dp)) {
+        Text("Appearance", style = Ty.Label)
+        androidx.compose.foundation.layout.Row(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp), modifier = androidx.compose.ui.Modifier.padding(top = 6.dp)) {
+            listOf(ch.ripple.app.Appearance.SYSTEM to "Like the phone", ch.ripple.app.Appearance.LIGHT to "Light", ch.ripple.app.Appearance.DARK to "Dark").forEach { (a, label) ->
+                val on = setting.value == a
+                Text(label, style = Ty.Small.copy(color = if (on) Tk.White else Tk.Ink, fontWeight = if (on) androidx.compose.ui.text.font.FontWeight.SemiBold else androidx.compose.ui.text.font.FontWeight.Normal),
+                    modifier = androidx.compose.ui.Modifier.heightIn(min = 40.dp)
+                        .background(if (on) Tk.Ink else Tk.White, Tk.R).border(1.dp, if (on) Tk.Ink else Tk.Line, Tk.R)
+                        .clickable(role = androidx.compose.ui.semantics.Role.RadioButton) { setting.choose(a) }
+                        .padding(horizontal = 12.dp, vertical = 10.dp)
+                        .semantics { contentDescription = "Appearance: $label" + if (on) ", selected" else "" })
+            }
+        }
+    }
 }
