@@ -19,6 +19,7 @@ kotlin {
             implementation(compose.runtime)
             implementation(compose.foundation)
             implementation(compose.material3)
+            implementation(libs.kotlinx.serialization.json) // JSON tree API for the phone session file, no plugin
         }
         jvmMain.dependencies {
             implementation(compose.desktop.currentOs)
