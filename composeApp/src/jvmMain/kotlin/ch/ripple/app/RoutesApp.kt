@@ -127,7 +127,8 @@ fun RoutesApp(reduceMotion: Boolean = false, escPresses: Int = 0) {
 private sealed interface Stage {
     data object Ask : Stage
     data class Describe(val draft: DecisionDraft, val from: DecisionSpec?) : Stage
-    data class Explore(val session: DecisionSession, val spec: DecisionSpec?, val serial: Int) : Stage
+    data class Explore(val session: DecisionSession, val spec: DecisionSpec?, val serial: Int, val graph: DecisionGraph? = null, val origin: String? = null) : Stage
+    data object Import : Stage
 }
 
 @Composable
@@ -139,7 +140,7 @@ private fun RoutesRoot(escPresses: Int) {
     fun open(spec: DecisionSpec) = runCatching { spec.toSession() }
         .onSuccess { serial++; error = null; stage = Stage.Explore(it, spec, serial) }
         .onFailure { error = it.message }
-    LaunchedEffect(escPresses) { if (escPresses > 0 && stage is Stage.Describe) stage = Stage.Ask }
+    LaunchedEffect(escPresses) { if (escPresses > 0 && (stage is Stage.Describe || stage == Stage.Import)) stage = Stage.Ask }
 
     val fictional = (stage as? Stage.Explore)?.session?.profile?.fictional
     Box(Modifier.fillMaxSize().background(Rt.White)) {
@@ -151,7 +152,7 @@ private fun RoutesRoot(escPresses: Int) {
                     error?.let { Text("Routes couldn't do that: $it", style = RtType.Body, modifier = Modifier.padding(bottom = 16.dp)) }
                     AnimatedContent(
                         targetState = stage,
-                        contentKey = { when (it) { Stage.Ask -> "ask"; is Stage.Describe -> "describe"; is Stage.Explore -> "explore-${it.serial}" } },
+                        contentKey = { when (it) { Stage.Ask -> "ask"; Stage.Import -> "import"; is Stage.Describe -> "describe"; is Stage.Explore -> "explore-${it.serial}" } },
                         transitionSpec = { if (reduce) EnterTransition.None togetherWith ExitTransition.None else fadeIn(tween(300, 90)) togetherWith fadeOut(tween(150)) },
                     ) { s ->
                         when (s) {
@@ -160,10 +161,17 @@ private fun RoutesRoot(escPresses: Int) {
                                 onAlex = { serial++; stage = Stage.Explore(SampleData.alexEvolvingSession, null, serial) },
                                 onSam = { open(ExampleDecisions.samStudyAbroad) },
                                 onNoor = { open(ExampleDecisions.noorFewerHours) },
+                                onImport = { error = null; stage = Stage.Import },
                             )
+                            Stage.Import -> ImportView(onBack = { stage = Stage.Ask }) { d ->
+                                serial++
+                                val versions = d.graph.nodes.size
+                                stage = Stage.Explore(d.spec.toSession(), d.spec, serial, d.graph,
+                                    "Opened from your phone: $versions version${if (versions == 1) "" else "s"}, recomputed by the engine on this laptop. Changes here stay on this laptop; nothing syncs back.")
+                            }
                             is Stage.Describe -> DescribeView(s.draft, s.from, onBack = { stage = Stage.Ask }, onReady = ::open)
                             is Stage.Explore -> TwinView(s.session, s.spec, escPresses,
-                                onEdit = s.spec?.let { spec -> { stage = Stage.Describe(draftOf(spec), spec) } })
+                                onEdit = s.spec?.let { spec -> { stage = Stage.Describe(draftOf(spec), spec) } }, initial = s.graph, origin = s.origin)
                         }
                     }
                 }
@@ -256,9 +264,12 @@ private sealed interface Focus {
 private val DEFAULT_FOCUS: Focus = Focus.Way(0)
 
 @Composable
-private fun TwinView(start: DecisionSession, spec: DecisionSpec?, escPresses: Int, onEdit: (() -> Unit)?) {
-    var graph by remember { mutableStateOf(startGraph(start)) }
-    var confirmedId by remember { mutableStateOf(graph.activeNodeId) }
+private fun TwinView(start: DecisionSession, spec: DecisionSpec?, escPresses: Int, onEdit: (() -> Unit)?, initial: DecisionGraph? = null, origin: String? = null) {
+    var graph by remember { mutableStateOf(initial ?: startGraph(start)) }
+    // An imported history may end on a what-if: the plan is its nearest confirmed ancestor.
+    var confirmedId by remember {
+        mutableStateOf(generateSequence(graph.active) { n -> n.parentId?.let(graph::node) }.first { !it.hypothetical }.id)
+    }
     var focus by remember { mutableStateOf(DEFAULT_FOCUS) }
     var note by remember { mutableStateOf<ChangeNote?>(null) }
     var before by remember { mutableStateOf<Pair<String, List<Chf>>?>(null) }
@@ -316,6 +327,7 @@ private fun TwinView(start: DecisionSession, spec: DecisionSpec?, escPresses: In
     val sources = spec?.changes?.mapNotNull { c -> c.source?.let { c.id to it } }?.toMap().orEmpty()
     Column {
         error?.let { Text("Routes couldn't do that: $it", style = RtType.Body, modifier = Modifier.padding(bottom = 16.dp)) }
+        origin?.let { Text(it, style = RtType.Small, modifier = Modifier.padding(bottom = 10.dp)) }
         Workspace(
             graph, node, shown, confirmedId, note, trial, spec, sources,
             beforeRoute = before?.takeIf { it.first == node.id && trial == null }?.second,

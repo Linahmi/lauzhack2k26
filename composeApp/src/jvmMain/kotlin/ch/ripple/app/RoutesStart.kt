@@ -62,7 +62,7 @@ import kotlinx.coroutines.withContext
 /* ============================== Ask ============================== */
 
 @Composable
-internal fun AskView(onAsk: (String) -> Unit, onAlex: () -> Unit, onSam: () -> Unit, onNoor: () -> Unit) {
+internal fun AskView(onAsk: (String) -> Unit, onAlex: () -> Unit, onSam: () -> Unit, onNoor: () -> Unit, onImport: () -> Unit) {
     var q by remember { mutableStateOf("") }
     Column(Modifier.padding(top = 70.dp).widthIn(max = 820.dp), verticalArrangement = Arrangement.spacedBy(22.dp)) {
         Text("What happens if…?", style = RtType.Title)
@@ -85,6 +85,8 @@ internal fun AskView(onAsk: (String) -> Unit, onAlex: () -> Unit, onSam: () -> U
             LinkText("Sam studies abroad", onSam)
             LinkText("Noor works fewer hours", onNoor)
         }
+        Spacer(Modifier.height(10.dp))
+        LinkText("Open a decision from your phone", onImport)
     }
 }
 
@@ -564,3 +566,41 @@ internal fun draftOf(spec: DecisionSpec) = DecisionDraft(
     needsDuration = spec.changes.any { it.timing == ChangeTiming.WHILE_IT_LASTS }, coverage = spec.coverage, recognized = true,
 )
 
+
+/* ============================== From the phone ============================== */
+
+/**
+ * Opens a decision copied on the phone (Routes decision format, shared code in phone/SessionCodec).
+ * The file holds only what the person said and did; the engine replays every step here, so the
+ * laptop shows the same versions without trusting any stored result. Nothing syncs.
+ */
+@Composable
+internal fun ImportView(onBack: () -> Unit, onOpen: (ch.ripple.app.phone.RoutesDecision) -> Unit) {
+    var text by remember { mutableStateOf("") }
+    var problem by remember { mutableStateOf<String?>(null) }
+    fun open(raw: String) {
+        problem = null
+        runCatching { ch.ripple.app.phone.importDecision(raw.trim()) }
+            .onSuccess(onOpen)
+            .onFailure { problem = "This isn't a Routes decision Routes can open: ${it.message ?: it.javaClass.simpleName}." }
+    }
+    Column(Modifier.padding(top = 18.dp).widthIn(max = 820.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        LinkText("‹ Ask something else", onBack)
+        Text("Open a decision from your phone", style = RtType.Title)
+        Text("On the phone, open the decision in My Routes and choose “Copy this decision's data”. Send it to yourself however you like, then paste it here or open the saved file.", style = RtType.Lead)
+        OutlinedTextField(
+            text, { text = it; problem = null }, label = { Text("Paste the decision data") }, textStyle = RtType.Small,
+            modifier = Modifier.fillMaxWidth().height(160.dp),
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            PrimaryButton("Open it  →", enabled = text.isNotBlank()) { open(text) }
+            SecondaryButton("Open a file…") {
+                val d = java.awt.FileDialog(null as java.awt.Frame?, "Open a Routes decision", java.awt.FileDialog.LOAD)
+                d.isVisible = true
+                d.file?.let { name -> runCatching { java.io.File(d.directory, name).readText() }.onSuccess { text = it; open(it) }.onFailure { problem = "Routes couldn't read that file." } }
+            }
+        }
+        problem?.let { Text(it, style = RtType.Body.copy(color = Rt.Bronze)) }
+        Text("Only the decision's structure and its versions travel: no audio, no conversation. Every number is recomputed on this laptop. Nothing is sent anywhere and nothing syncs back.", style = RtType.Small)
+    }
+}

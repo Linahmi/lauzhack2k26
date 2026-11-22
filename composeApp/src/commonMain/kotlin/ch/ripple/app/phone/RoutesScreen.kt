@@ -321,7 +321,7 @@ private fun ColumnScope.More(session: RoutesSession, d: RoutesDecision, nav: Pho
     val clipboard = LocalClipboardManager.current
     var copied by remember { mutableStateOf(false) }
     Text("Open on a laptop", style = Ty.Label)
-    Text("Phone-to-laptop handoff isn't built yet, and nothing syncs. This decision is kept as structured data (its situation, changes and every version), not a transcript, so the desktop can open the same decision once it can import it.", style = Ty.Body)
+    Text("Copy this decision's data, send it to yourself, and on the laptop choose “Open a decision from your phone”. It carries the situation, changes and every version, not a transcript. Nothing syncs.", style = Ty.Body)
     Secondary("Copy this decision's data") { clipboard.setText(AnnotatedString(d.export())); copied = true }
     if (copied) Text("Copied (Routes decision format v$FORMAT_VERSION). Nothing was sent anywhere.", style = Ty.Small)
     Divider()
