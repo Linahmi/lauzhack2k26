@@ -80,10 +80,11 @@ fun situationFromJson(o: JsonObject) = Situation(
 private fun FinancialChange.toJson() = buildJsonObject {
     put("id", id); put("label", label); put("kind", kind.name); amount?.let { put("amount", it.toJson()) }
     put("timing", timing.name); put("monthOffset", monthOffset)
+    source?.let { put("source", it) }; sourceRef?.let { put("sourceRef", it) } // optional: researched figures (laptop)
 }
 private fun changeFromJson(o: JsonObject) = FinancialChange(
     o.str("id"), o.str("label"), ChangeKind.valueOf(o.str("kind")), o["amount"]?.jsonObject?.let(::amountFromJson),
-    ChangeTiming.valueOf(o.str("timing")), o.int("monthOffset"),
+    ChangeTiming.valueOf(o.str("timing")), o.int("monthOffset"), o.strOrNull("source"), o.strOrNull("sourceRef"),
 )
 
 fun DecisionSpec.toJson() = buildJsonObject {

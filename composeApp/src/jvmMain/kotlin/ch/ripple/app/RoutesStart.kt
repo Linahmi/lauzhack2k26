@@ -62,7 +62,11 @@ import kotlinx.coroutines.withContext
 /* ============================== Ask ============================== */
 
 @Composable
-internal fun AskView(onAsk: (String) -> Unit, onAlex: () -> Unit, onSam: () -> Unit, onNoor: () -> Unit, onImport: () -> Unit) {
+internal fun AskView(
+    onAsk: (String) -> Unit, onAlex: () -> Unit, onSam: () -> Unit, onNoor: () -> Unit, onImport: () -> Unit,
+    plans: List<ch.ripple.app.phone.RoutesDecision> = emptyList(), plansProblem: String? = null,
+    onPlan: (ch.ripple.app.phone.RoutesDecision) -> Unit = {}, onForget: (String) -> Unit = {},
+) {
     var q by remember { mutableStateOf("") }
     Column(Modifier.padding(top = 70.dp).widthIn(max = 820.dp), verticalArrangement = Arrangement.spacedBy(22.dp)) {
         Text("What happens if…?", style = RtType.Title)
@@ -87,6 +91,13 @@ internal fun AskView(onAsk: (String) -> Unit, onAlex: () -> Unit, onSam: () -> U
         }
         Spacer(Modifier.height(10.dp))
         LinkText("Open a decision from your phone", onImport)
+        plansProblem?.let { Text(it, style = RtType.Small.copy(color = Rt.Bronze)) }
+        if (plans.isNotEmpty()) {
+            Spacer(Modifier.height(18.dp))
+            Text("Your plans", style = RtType.Label)
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) { plans.forEach { p -> PlanRow(p, onPlan, onForget) } }
+            Text("Saved only on this computer, as what you said and did; the numbers are recomputed each time.", style = RtType.Small)
+        }
     }
 }
 
@@ -602,5 +613,24 @@ internal fun ImportView(onBack: () -> Unit, onOpen: (ch.ripple.app.phone.RoutesD
         }
         problem?.let { Text(it, style = RtType.Body.copy(color = Rt.Bronze)) }
         Text("Only the decision's structure and its versions travel: no audio, no conversation. Every number is recomputed on this laptop. Nothing is sent anywhere and nothing syncs back.", style = RtType.Small)
+    }
+}
+
+/** One saved plan: click to reopen; removing asks once, because it can't be undone. */
+@Composable
+private fun PlanRow(p: ch.ripple.app.phone.RoutesDecision, onPlan: (ch.ripple.app.phone.RoutesDecision) -> Unit, onForget: (String) -> Unit) {
+    var confirm by remember { mutableStateOf(false) }
+    val versions = p.steps.count { it !is ch.ripple.app.phone.Step.Select } + 1
+    val changed = java.time.Instant.ofEpochMilli(p.steps.maxOfOrNull { it.at } ?: p.createdAt).atZone(java.time.ZoneId.systemDefault())
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f).focusRing().clickable(role = Role.Button, onClickLabel = "Open this plan") { onPlan(p) }.padding(vertical = 8.dp)) {
+            Text(p.spec.title + if (p.spec.fictional) " (fictional example)" else "", style = RtType.Body.copy(fontWeight = FontWeight.SemiBold, textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline))
+            Text("“${p.spec.intention}” · $versions version${if (versions == 1) "" else "s"} · last changed ${java.time.format.DateTimeFormatter.ofPattern("d MMM, HH:mm").format(changed)}", style = RtType.Small)
+        }
+        if (confirm) Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("Remove it for good?", style = RtType.Small)
+            LinkText("Remove") { onForget(p.id) }
+            LinkText("Keep") { confirm = false }
+        } else LinkText("Remove") { confirm = true }
     }
 }

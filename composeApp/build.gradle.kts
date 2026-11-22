@@ -41,4 +41,6 @@ compose.desktop {
 // UI tests must not depend on the local AI being installed: point them at a closed port.
 tasks.withType<Test>().configureEach {
     environment("RIPPLE_OLLAMA_URL", System.getenv("ROUTES_TEST_OLLAMA_URL") ?: "http://127.0.0.1:9")
+    // Tests never touch the person's real saved plans.
+    environment("ROUTES_DATA_DIR", layout.buildDirectory.dir("tmp/routes-test-data").get().asFile.absolutePath)
 }

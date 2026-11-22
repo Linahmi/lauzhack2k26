@@ -117,9 +117,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 @Composable
-fun RoutesApp(reduceMotion: Boolean = false, escPresses: Int = 0) {
+fun RoutesApp(reduceMotion: Boolean = false, escPresses: Int = 0, plansDir: java.io.File? = null) {
     MaterialTheme(colorScheme = lightColorScheme(primary = Rt.Ink, onPrimary = Rt.White, background = Rt.White, surface = Rt.White, onSurface = Rt.Ink, outline = Rt.Line)) {
-        CompositionLocalProvider(LocalReduceMotion provides reduceMotion) { RoutesRoot(escPresses) }
+        CompositionLocalProvider(LocalReduceMotion provides reduceMotion) { RoutesRoot(escPresses, plansDir) }
     }
 }
 
@@ -127,19 +127,42 @@ fun RoutesApp(reduceMotion: Boolean = false, escPresses: Int = 0) {
 private sealed interface Stage {
     data object Ask : Stage
     data class Describe(val draft: DecisionDraft, val from: DecisionSpec?) : Stage
-    data class Explore(val session: DecisionSession, val spec: DecisionSpec?, val serial: Int, val graph: DecisionGraph? = null, val origin: String? = null) : Stage
+    data class Explore(
+        val session: DecisionSession, val spec: DecisionSpec?, val serial: Int, val graph: DecisionGraph? = null, val origin: String? = null,
+        /** Saved-plan identity; null for the Alex example, which is not built from a spec. */
+        val planId: String? = null, val createdAt: Long = 0,
+    ) : Stage
     data object Import : Stage
 }
 
 @Composable
-private fun RoutesRoot(escPresses: Int) {
+private fun RoutesRoot(escPresses: Int, plansDir: java.io.File?) {
     var stage by remember { mutableStateOf<Stage>(Stage.Ask) }
     var serial by remember { mutableStateOf(0) }
     var error by remember { mutableStateOf<String?>(null) }
     val reduce = LocalReduceMotion.current
+    val store = remember { plansDir?.let(::LaptopPlans) ?: LaptopPlans() }
+    var plans by remember { mutableStateOf(store.load()) }
+    fun newId() = "laptop-" + System.currentTimeMillis()
     fun open(spec: DecisionSpec) = runCatching { spec.toSession() }
-        .onSuccess { serial++; error = null; stage = Stage.Explore(it, spec, serial) }
+        .onSuccess { serial++; error = null; stage = Stage.Explore(it, spec, serial, planId = newId(), createdAt = System.currentTimeMillis()) }
         .onFailure { error = it.message }
+    fun openPlan(d: ch.ripple.app.phone.RoutesDecision) = runCatching { d.graph }
+        .onSuccess { g -> serial++; error = null; stage = Stage.Explore(d.spec.toSession(), d.spec, serial, g, planId = d.id, createdAt = d.createdAt) }
+        .onFailure { error = it.message }
+    // Every change is saved at once. Untouched fictional examples are not plans, so they aren't saved.
+    fun keep(s: Stage.Explore, g: DecisionGraph) {
+        val spec = s.spec ?: return
+        val id = s.planId ?: return
+        if (spec.fictional && g.nodes.size == 1 && plans.none { it.id == id }) return
+        val plan = planOf(id, spec, s.createdAt, g, plans.firstOrNull { it.id == id })
+        plans = plans.filterNot { it.id == id } + plan
+        runCatching { store.save(plans) }.onFailure { error = "your plan couldn't be saved: ${it.message}" }
+    }
+    fun forget(id: String) {
+        plans = plans.filterNot { it.id == id }
+        runCatching { store.save(plans) }.onFailure { error = "the change couldn't be saved: ${it.message}" }
+    }
     LaunchedEffect(escPresses) { if (escPresses > 0 && (stage is Stage.Describe || stage == Stage.Import)) stage = Stage.Ask }
 
     val fictional = (stage as? Stage.Explore)?.session?.profile?.fictional
@@ -162,16 +185,21 @@ private fun RoutesRoot(escPresses: Int) {
                                 onSam = { open(ExampleDecisions.samStudyAbroad) },
                                 onNoor = { open(ExampleDecisions.noorFewerHours) },
                                 onImport = { error = null; stage = Stage.Import },
+                                plans = plans.sortedByDescending { p -> p.steps.maxOfOrNull { it.at } ?: p.createdAt },
+                                plansProblem = store.problem,
+                                onPlan = ::openPlan, onForget = ::forget,
                             )
                             Stage.Import -> ImportView(onBack = { stage = Stage.Ask }) { d ->
                                 serial++
                                 val versions = d.graph.nodes.size
                                 stage = Stage.Explore(d.spec.toSession(), d.spec, serial, d.graph,
-                                    "Opened from your phone: $versions version${if (versions == 1) "" else "s"}, recomputed by the engine on this laptop. Changes here stay on this laptop; nothing syncs back.")
+                                    "Opened from your phone: $versions version${if (versions == 1) "" else "s"}, recomputed by the engine on this laptop. Changes here stay on this laptop; nothing syncs back.",
+                                    planId = d.id, createdAt = d.createdAt)
                             }
                             is Stage.Describe -> DescribeView(s.draft, s.from, onBack = { stage = Stage.Ask }, onReady = ::open)
                             is Stage.Explore -> TwinView(s.session, s.spec, escPresses,
-                                onEdit = s.spec?.let { spec -> { stage = Stage.Describe(draftOf(spec), spec) } }, initial = s.graph, origin = s.origin)
+                                onEdit = s.spec?.let { spec -> { stage = Stage.Describe(draftOf(spec), spec) } }, initial = s.graph, origin = s.origin,
+                                onChanged = { g -> keep(s, g) })
                         }
                     }
                 }
@@ -180,7 +208,7 @@ private fun RoutesRoot(escPresses: Int) {
         }
         Text(
             "Independent prototype for the UBS AI Financial Twin challenge. Not made or endorsed by UBS. " +
-                (if (fictional == false) "Your figures stay on this computer" else "Fictional examples") + "; not a forecast or financial advice.",
+                (if (fictional == false) "Your plans are saved only on this computer" else "Fictional examples") + "; not a forecast or financial advice.",
             style = RtType.Small,
             modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth().background(Rt.White).padding(start = 40.dp, end = 40.dp, top = 10.dp, bottom = 18.dp),
         )
@@ -264,8 +292,12 @@ private sealed interface Focus {
 private val DEFAULT_FOCUS: Focus = Focus.Way(0)
 
 @Composable
-private fun TwinView(start: DecisionSession, spec: DecisionSpec?, escPresses: Int, onEdit: (() -> Unit)?, initial: DecisionGraph? = null, origin: String? = null) {
+private fun TwinView(
+    start: DecisionSession, spec: DecisionSpec?, escPresses: Int, onEdit: (() -> Unit)?, initial: DecisionGraph? = null, origin: String? = null,
+    onChanged: (DecisionGraph) -> Unit = {},
+) {
     var graph by remember { mutableStateOf(initial ?: startGraph(start)) }
+    LaunchedEffect(graph) { onChanged(graph) }
     // An imported history may end on a what-if: the plan is its nearest confirmed ancestor.
     var confirmedId by remember {
         mutableStateOf(generateSequence(graph.active) { n -> n.parentId?.let(graph::node) }.first { !it.hypothetical }.id)
