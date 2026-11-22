@@ -1,9 +1,9 @@
 [README.md](https://github.com/user-attachments/files/35231065/README.md)
-# Ripple
+# Routes
 
 **Don't predict the future. Make it explorable.**
 
-Ripple is a cross-platform financial decision explorer. It helps people ask *“What happens if I move out, work fewer hours, or study abroad?”* and investigate how those choices may affect their cash flow, uncertainty, and personal commitments. Rather than issuing an affordability verdict, Ripple exposes the assumptions, compares possible paths, and lets the person decide what matters.
+Routes is a cross-platform financial decision explorer. It helps people ask *“What happens if I move out, work fewer hours, or study abroad?”* and investigate how those choices may affect their cash flow, uncertainty, and personal commitments. Rather than issuing an affordability verdict, routes exposes the assumptions, compares possible paths, and lets the person decide what matters.
 
 Built at **LauzHack 2026** for the **UBS AI Financial Twin**, **IMC Tech for Good**, and **JetBrains Kotlin Multiplatform** challenges.
 
@@ -11,7 +11,7 @@ Built at **LauzHack 2026** for the **UBS AI Financial Twin**, **IMC Tech for Goo
 
 ## The product
 
-Ripple approaches a financial decision from three complementary perspectives:
+routes approaches a financial decision from three complementary perspectives:
 
 - **Guardian — What could go wrong?** Stress-tests the plan against stated adverse conditions and identifies where a cash constraint is breached.
 - **Skeptic — What are we assuming?** Surfaces uncertain inputs and asks which missing information could actually change the conclusion.
@@ -151,7 +151,7 @@ No production banking data or real client credentials are required for the ficti
 
 ## Limitations and responsible use
 
-- Ripple explores **conditional scenarios**, not probabilistically calibrated forecasts.
+- routes explores **conditional scenarios**, not probabilistically calibrated forecasts.
 - Search results are bounded by their documented horizon, grids, candidate limits and stress cases.
 - Tax, pension, debt, investment, inflation and benefit effects may be outside the implemented model.
 - A scenario passing a cash-buffer check does not mean the decision is advisable.
@@ -171,4 +171,4 @@ No production banking data or real client credentials are required for the ficti
 
 ---
 
-**Ripple's core principle:** make the consequences of a life decision visible, keep uncertainty honest, and leave the decision with the person.
+**routes's core principle:** make the consequences of a life decision visible, keep uncertainty honest, and leave the decision with the person.
