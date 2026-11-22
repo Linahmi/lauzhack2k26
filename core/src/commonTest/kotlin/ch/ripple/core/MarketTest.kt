@@ -298,4 +298,13 @@ class MarketTest {
 
     private fun sessionWith(q: MarketQuery) =
         alexLausanneSession.copy(inputs = alexLausanneSession.inputs.map { if (it.id == "rent") it.copy(market = q) else it })
+
+    @Test fun typedWhatIfReplacesMarketWhatIf() {
+        val id = MarketData.vaudHousing.benchmarksFor(alexRentQuery).first().estimate.id
+        val s = alexLausanneSession.apply(Hypothesis.UseMarketEstimate("rent", id))
+            .apply(Hypothesis.WhatIfInput("rent", Chf.francs(1_000)))
+        assertNull(s.marketAssumptions["rent"])
+        assertEquals(Chf.francs(1_000), s.hypotheticalValues["rent"])
+        assertEquals(Provenance.ASSUMED, s.effectiveInputFact(s.inputs.first { it.id == "rent" }).provenance)
+    }
 }

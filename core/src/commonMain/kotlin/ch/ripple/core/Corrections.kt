@@ -156,7 +156,8 @@ fun DecisionSession.apply(h: Hypothesis): DecisionSession = when (h) {
     is Hypothesis.WhatIfInput -> {
         require(inputs.any { it.id == h.inputId }) { "unknown input '${h.inputId}'" }
         require(!h.value.isNegative) { "value cannot be negative" }
-        copy(hypotheticalValues = hypotheticalValues + (h.inputId to h.value))
+        // A typed what-if is the user's own assumption: it replaces a market what-if for this input.
+        copy(hypotheticalValues = hypotheticalValues + (h.inputId to h.value), marketAssumptions = marketAssumptions - h.inputId)
     }
     is Hypothesis.TryOption -> copy(activeOptionId = h.optionId) // validated in DecisionSession.init
     is Hypothesis.ApplyCut -> copy(plannedCut = h.cut)           // validated in DecisionSession.init
