@@ -165,3 +165,40 @@ One entry per substantial feature (see the challenge gate in [CLAUDE.md](../CLAU
   passes → enter the real offer → repairable. Fallback: `ResearchTest.endToEndDecisionToUpdatedGraph`.
 - **Feasibility:** owner Developer A. One provider (Anthropic: LLM + web search/fetch). Cut:
   multi-agent orchestration, crawling, more category models. Blocker: an API key is needed for the live Claude run.
+
+## 2026-11-22 — Visual identity: Routes × UBS (implemented on desktop)
+
+- **Problem and beneficiary:** people with little financial knowledge abandon screens that look
+  like dashboards or alarms. The desktop opens on one decision, one plain-language finding and one
+  action. Detail (months, causes, the sum, other paths) appears only when the person asks for it.
+- **UBS:** the look borrows public principles from UBS's web publishing guidelines (near-black
+  text, white and Chalk surfaces, red used sparingly with one meaning, underlined links, 4.5:1
+  contrast, WCAG 2.1 AA). No UBS logo, typeface, image or banking terminology. Every screen
+  carries: "Independent prototype for the UBS AI Financial Twin challenge. Not made or endorsed
+  by UBS."
+- **IMC:** a tight month is shown in calm bronze, not alarm red. Every text colour was measured
+  at 4.5:1 or more. Plain sentences, large type, one emphasis per screen.
+- **JetBrains:** desktop implementation in `composeApp/jvmMain` (`RoutesApp.kt`, `RoutesTheme.kt`). The
+  journey helpers that select key months, causes and trial previews from engine results live in
+  `composeApp/commonMain/RoutesJourney.kt`, so Android can reuse them. Android UI unchanged.
+- **Demo proof:** the seven-step journey (open → finding → April → what led here → deposit →
+  confirm CHF 1,450 → back, other paths) is drawn with these tokens in the review prototype
+  "Routes Visual Identity". Numbers follow the Alex sample: April CHF 300 → CHF 550.
+- **Feasibility:** owner Developer B. Replaces the earlier beige and green desktop styling. Cut:
+  decorative shadows, gradients, pill shapes, bright yellow.
+
+Tokens and rules:
+
+| Role | Value | Rule |
+|---|---|---|
+| Ink | `#1C1C1C` | All main text |
+| Secondary text | `#5A5D5C` | Never lighter for text (6.7:1) |
+| Surface | `#FFFFFF`; Chalk `#F9F9F7`; track `#ECEAE3`; lines `#E0DED6` | No shadows; 1px lines mark edges |
+| Action red | `#E60000`, white label | Main action and the Routes mark only |
+| Link red | `#DA0000`, underlined | Back, "Check it", "Show the math" |
+| Below the cushion | bronze text `#86671D`, bar `#AF8626` | Only for amounts under the cushion (5.3:1) |
+| Fine | bar `#1C1C1C` | Neutral, so only problems get colour |
+| Routes highlighter | pale gold `#F1E2BC` | Marks the one thing that matters per screen; confirmed facts |
+| Type | Source Sans 3 (free licence); headings Light 300, large | Never UBS Headline or Frutiger |
+| Shape | radius 3–4px; meter 6px, square ends | |
+| Secondary button | white, 1px `#1C1C1C` outline | |
