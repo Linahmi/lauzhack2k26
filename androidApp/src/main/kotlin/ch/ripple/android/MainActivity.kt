@@ -53,7 +53,8 @@ class MainActivity : ComponentActivity() {
             val session = remember { RoutesSession(store) { System.currentTimeMillis() } }
             val platform = remember {
                 PhonePlatform(speechInput, timeText = { timeFormat.format(Date(it)) }, backHandler = { enabled, onBack -> BackHandler(enabled, onBack) }, live = live,
-                    canCapture = { lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) }, appearance = appearance)
+                    canCapture = { lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) }, appearance = appearance,
+                    animationsOff = { android.provider.Settings.Global.getFloat(contentResolver, android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f })
             }
             PhoneApp(session, platform)
         }

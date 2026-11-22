@@ -53,6 +53,8 @@ class PhonePlatform(
     val backHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> },
     val live: LiveConversation = NoLiveVoice,
     val canCapture: () -> Boolean = { true },
+    /** True when the system animation scale is 0: everything is shown still. */
+    val animationsOff: () -> Boolean = { false },
     /** Light / Dark / follow the phone; saved by the platform. */
     val appearance: ch.ripple.app.AppearanceSetting = ch.ripple.app.AppearanceSetting(ch.ripple.app.MemoryAppearanceStore()),
 )

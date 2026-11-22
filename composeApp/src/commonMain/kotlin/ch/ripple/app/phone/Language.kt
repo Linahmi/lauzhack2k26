@@ -70,6 +70,23 @@ fun findingText(d: RoutesDecision, k: KeyMoment, session: DecisionSession = d.gr
     }
 }
 
+/** The same engine result as [findingText], laid out for the voice-first answer: status, headline, one line. */
+data class Readout(val status: String, val problem: Boolean, val headline: String, val explanation: String)
+
+fun readoutOf(d: RoutesDecision, k: KeyMoment, session: DecisionSession = d.graph.active.session): Readout {
+    val month = monthName(k.month)
+    return when {
+        k.moneyLeft.isNegative -> Readout("Money runs out in ${monthName(k.firstShort ?: k.month)}", true,
+            "$month ends at ${k.moneyLeft.money()}.", "In the hardest case tested; not a forecast.")
+        d.hasCushion(session) && k.belowCushion -> Readout("$month gets tight", true,
+            "${k.moneyLeft.money()} left at the end of $month.", "Below your ${k.cushion.money()} cushion, in the hardest case tested.")
+        d.hasCushion(session) -> Readout("Stays above your cushion", false,
+            "The lowest point is $month: ${k.moneyLeft.money()}.", "Even in the hardest case tested, every month keeps your ${k.cushion.money()} cushion.")
+        else -> Readout("Lowest point: $month", false,
+            "${k.moneyLeft.money()} left at the end of $month.", "In the hardest case tested. No cushion is set.")
+    }
+}
+
 fun changeText(before: KeyMoment, after: KeyMoment): String =
     if (before.month == after.month) "Lowest point, ${monthName(after.month)}: ${before.moneyLeft.money()} → ${after.moneyLeft.money()}."
     else "Lowest point moves from ${monthName(before.month)} (${before.moneyLeft.money()}) to ${monthName(after.month)} (${after.moneyLeft.money()})."
