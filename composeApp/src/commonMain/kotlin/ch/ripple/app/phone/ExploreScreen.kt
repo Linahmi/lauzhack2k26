@@ -45,9 +45,8 @@ fun ExploreScreen(session: RoutesSession, nav: PhoneNav, voice: VoiceState, plat
 @Composable
 private fun Header(session: RoutesSession) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-        RoutesMark()
-        Spacer(Modifier.width(8.dp))
-        Text("Routes", style = Ty.Strong, modifier = Modifier.weight(1f))
+        RoutesLockup()
+        Spacer(Modifier.weight(1f))
         session.profile?.let { Text(if (it.fictional) "${it.name} · fictional example" else it.name, style = Ty.Small) }
     }
 }

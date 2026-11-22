@@ -61,13 +61,44 @@ object Ty {
     val Button = TextStyle(fontFamily = F, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
 }
 
+/** Light grey of the routes not taken in the Routes logo. */
+val RouteGrey = Color(0xFFBDBBB0)
+
+/**
+ * The Routes logo mark: a starting point, three possible routes, the chosen one in red with a
+ * check. Drawn on a 46×40 grid.
+ */
 @Composable
-fun RoutesMark(size: Int = 20, color: Color = Tk.Red) = Canvas(Modifier.size(size.dp)) {
-    val s = this.size.width / 24f
-    val stroke = Stroke(width = 2.4f * s, cap = StrokeCap.Round)
-    drawPath(Path().apply { moveTo(7 * s, 21 * s); lineTo(7 * s, 14 * s); cubicTo(7 * s, 10.5f * s, 9.5f * s, 8 * s, 13 * s, 8 * s); lineTo(19 * s, 8 * s) }, color, style = stroke)
-    drawPath(Path().apply { moveTo(7 * s, 14 * s); cubicTo(7 * s, 10.5f * s, 5.5f * s, 8 * s, 4 * s, 6 * s) }, color, style = stroke)
-    drawCircle(color, 1.7f * s, androidx.compose.ui.geometry.Offset(19 * s, 8 * s))
+fun RoutesMark(height: Int = 30, chosen: Color = Tk.Red, other: Color = RouteGrey) =
+    Canvas(Modifier.size(width = (height * 46f / 40f).dp, height = height.dp)) {
+        val u = size.height / 40f
+        fun o(x: Float, y: Float) = androidx.compose.ui.geometry.Offset(x * u, y * u)
+        val line = Stroke(width = 3.6f * u, cap = StrokeCap.Round)
+        fun branch(endY: Float) = Path().apply { moveTo(4 * u, 20 * u); cubicTo(18 * u, 20 * u, 20 * u, endY * u, 36 * u, endY * u) }
+        // Routes not taken: a line to a hollow end.
+        drawPath(branch(34f), other, style = line)
+        drawLine(other, o(4f, 20f), o(36f, 20f), 3.6f * u, StrokeCap.Round)
+        listOf(20f, 34f).forEach { y ->
+            drawCircle(Color.White, 3.2f * u, o(40.5f, y))
+            drawCircle(other, 3.2f * u, o(40.5f, y), style = Stroke(2.4f * u))
+        }
+        // The chosen route, with its check.
+        drawPath(branch(6f), chosen, style = line)
+        drawCircle(chosen, 4.6f * u, o(40.5f, 6f))
+        drawPath(Path().apply { moveTo(38.4f * u, 6.3f * u); lineTo(40f * u, 7.9f * u); lineTo(42.8f * u, 4.6f * u) }, Color.White,
+            style = Stroke(1.6f * u, cap = StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round))
+        drawCircle(Tk.Ink, 3.6f * u, o(4f, 20f))
+    }
+
+/** "Routes" with the red s, as in the logo lockup. */
+@Composable
+fun RoutesLockup(height: Int = 30) = androidx.compose.foundation.layout.Row(verticalAlignment = Alignment.CenterVertically) {
+    RoutesMark(height)
+    androidx.compose.foundation.layout.Spacer(Modifier.width(8.dp))
+    Text(androidx.compose.ui.text.buildAnnotatedString {
+        append("Route")
+        pushStyle(androidx.compose.ui.text.SpanStyle(color = Tk.Red)); append("s"); pop()
+    }, style = Ty.Strong.copy(fontSize = (height * 0.85f).sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.3).sp))
 }
 
 @Composable
