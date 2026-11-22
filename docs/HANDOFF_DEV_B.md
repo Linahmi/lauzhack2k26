@@ -98,3 +98,14 @@ Full signatures, keys and display rules: `docs/MARKET_DATA.md`. `SampleData.alex
 `planResearch(SampleData.alexContext, session)` → `runResearch(request, provider, ResearchCache.snapshot)` →
 user taps "Use this figure" → `graph.explore(Hypothesis.UseResearchedEstimate(...))`. It works offline with
 `provider = null`. Signatures, display rules and the server setup are in `docs/RESEARCH_AGENT.md`.
+
+## Update 2026-11-22 — any decision, not only Alex (branch `feature/generic-interactive-routes`)
+
+| Need | Call |
+|---|---|
+| Example twins | `startGraph(ExampleDecisions.samStudyAbroad.toSession())`, `…noorFewerHours…` |
+| From the person's words | `interpretDecision(text): DecisionDraft` → fill amounts → `draft.toSpec(situation, …)` → `spec.problems()` (must be empty) → `spec.toSession()` |
+| Where an input turns | `session.whereItTurns(inputId)` → `passesUpTo` / `passesFrom` |
+| Month inputs | `DecisionInput.unit` = `MONTH_INDEX` / `MONTH_COUNT`; value = `chf.wholeUnits` |
+
+Shared journey helpers (`composeApp/commonMain/RoutesJourney.kt`): `keyMoment`, `causes`, `turn`, `briefFor`. Nothing here needs Android UI changes.

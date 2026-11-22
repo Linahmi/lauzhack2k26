@@ -202,3 +202,38 @@ Tokens and rules:
 | Type | Source Sans 3 (free licence); headings Light 300, large | Never UBS Headline or Frutiger |
 | Shape | radius 3–4px; meter 6px, square ends | |
 | Secondary button | white, 1px `#1C1C1C` outline | |
+
+## 2026-11-22 — Generic decisions + interactive desktop canvas
+
+**What:** `core/DecisionSpec.kt` describes any cash-flow life decision as data — a situation (cash, pay, spending, what can't be cut, planned bills, optional lower-pay months) plus `FinancialChange`s (less/more pay, more/less spending, one-off cost, refundable deposit) with start, duration, offsets and `Amount.Known / Estimate / Between`. `toSession()` builds an ordinary `DecisionSession`, so moving, studying abroad, fewer hours, a car… all run through the same `simulate()`, stress search, repairs, corrections and decision graph. No new simulator per decision type.
+
+Engine additions (small, backward compatible): `UnknownImpact.passesFrom` (boundary when more is better, e.g. savings or a later start); `DecisionInput.unit` (month-valued inputs reuse the exhaustive search — documented shortcut: values ride on `Chf` as whole units); `DecisionSession.baselineFor` (the "keep things as they are" path follows corrected pay/spending); `DecisionSession.whereItTurns(id)` (engine-computed boundary for any input).
+
+`interpretDecision(text)` is a deterministic offline pattern matcher: it proposes change *kinds* only, fills an amount only when the person typed it, flags pension/tax/investment/debt as not modelled, and leaves everything else to the person. **No LLM is wired in yet**; an LLM may later produce the same `DecisionDraft`, which must still pass `DecisionSpec.problems()` and user confirmation.
+
+Desktop: start screen ("What happens if…?" + three fictional examples), a short setup form, then the twin with a route canvas (selected route = hardest tested case, one comparison route, cushion, before-line after a confirmed change), route switcher, and levers for every input. Dragging a lever is a debounced what-if recomputed by the engine off the UI thread; "That's the real figure" is a correction (new version); "Keep it as a what-if" is a hypothesis node. Boundaries are drawn only when the engine computed one.
+
+- **Problem/beneficiary:** people with partial figures (no bank link, rough ranges) can describe their own decision instead of only watching Alex.
+- **UBS:** scenario + baseline + counterfactuals for any supported decision; hand-derived tests for two new decisions (`DecisionSpecTest`), Alex unchanged.
+- **IMC:** ranges/estimates and "can't cut" spending are first-class; still a hypothesis until a nonprofit validates the workflow.
+- **JetBrains:** spec, interpreter, boundaries and journey helpers are in `commonMain`; Android can consume `ExampleDecisions` / `DecisionSpec.toSession()` unchanged. Android UI not modified.
+- **Demo proof:** `RoutesUiTest` drives Sam, Noor and Alex through the real UI; fallback = the three examples.
+- **Cut:** LLM interpretation, persistence of custom plans, editing opening cash in place (it starts a new plan), duration×start combined search beyond 5,000 combinations.
+
+## 2026-11-22 — Progressive desktop workspace, local AI and verified research in the flow
+
+- **One workspace:** question → one finding → a month strip (one mark per month on a stem from the cushion; exact, same scale). Clicking a month opens it in place; clicking again closes it. Causes inside a month are the controls for the figures behind them. "Worth trying" (≤ 2 figures: engine-ranked uncertain inputs, then timing) and "Other routes" appear only after the first month is opened; the full chart and every figure stay one click away.
+- **Setup:** one question at a time; answers stay as clickable lines; fictional situations (Sam, Noor) can be reused.
+- **Local AI (Ollama `qwen2.5:7b`, already used by research-server):** `OllamaDecisionReader` (core/jvmMain) reads the question in the background (≈ 30–60 s here). `readAiProposal` keeps only structure — title, a place that appears in the question, change kinds the built-in reading lacked — and drops every number. Verified live on 2026-11-22. Offline: the built-in reading is used and the UI says so.
+- **Research:** only where the validator can verify (official Swiss statistics; Lausanne / Vaud / Switzerland; rents). Live via research-server when running, else the dated cached snapshot, labelled as such. A researched amount is marked "from <source>, not confirmed" and carries `EXTERNAL_SOURCE` provenance in the scenario. Elsewhere (e.g. Amsterdam) the person is told to enter their own figure.
+- **Not done:** AI-phrased explanations (too slow locally to stay responsive, and every sentence is already built from engine values).
+
+## 2026-11-22 — "Find a way": decision-centred discovery
+
+`core/FindAWay.kt` — `findWays(session)` answers "what would need to change for this to keep my cushion?" using only existing engine operations: exhaustive input grids (`whereItTurns`, others held at their hardest tested values), timing inputs, modelled alternatives (`tradeOffs`), and the constraint-respecting spending trim (`offeredRepair`, never touching protected spending or rejected cuts). Generic over any `DecisionSpec`/session; no scenario names. Order: uncertain figures (engine-ranked) → timing → other decision figures → alternative routes → trim → "keep things as they are". `noneWork` reports plainly when no tested option keeps the cushion; results are always "within the N months shown and the ranges given", never long-term affordability. The person's existing pay and spending are not treated as levers.
+
+Desktop: the workspace leads with the decision, one finding and one "Find a way" question with its live experiment; the month strip below shows the consequence (plan before a try as hollow marks; results dim while recomputing so a new value never sits next to an old result). Timing choices say "Plan it for …", figures say "That's the real figure"; both can instead be saved as a what-if. Verified for Alex, Sam, Noor and a custom "buy a car" decision built through setup (`RoutesUiTest`, `FindAWayTest`).
+
+## 2026-11-22 — One active investigation
+
+The desktop workspace is decision → one finding → the route → ONE investigation area, driven by a typed `Focus` (way, tested ways, month, figure, calculation, all figures, versions, monthly chart). Clicking a month, cause, amount, cushion, threshold or route changes that same area; choosing the item already in focus (or Esc) returns to the default "Find a way". Nothing nests: causes and calculation lines link to a figure instead of opening sliders inside them; a "‹ August" back link keeps the trail. Repeated statements were removed (the area answers "does it keep the cushion?" instead of restating the finding); arithmetic, sources and tested-case counts live in the calculation view; the one horizon caveat stays under the route. Engine and Find-a-way search unchanged. The window opens maximized (a fixed 1320×900 dp window overflowed at 150 % scaling).

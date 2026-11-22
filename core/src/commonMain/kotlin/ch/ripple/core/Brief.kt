@@ -34,12 +34,24 @@ data class DecisionInput(
     val step: Chf,
     /** What this input means in market terms (enables market estimates for it); null = none. */
     val market: MarketQuery? = null,
+    /** What the value means. Month inputs reuse the same search (see [InputUnit]). */
+    val unit: InputUnit = InputUnit.CHF,
 ) {
     init {
         require(!low.isNegative && low <= high) { "need 0 <= low <= high" }
         require(step.rappen > 0 && (high - low).rappen % step.rappen == 0L) { "bounds must be a whole number of steps" }
     }
 }
+
+/**
+ * shortcut: month-valued inputs ride on [Chf] as whole units (`Chf.francs(3)` = month index 3 or
+ * 3 months) so the exhaustive search, what-ifs and corrections work unchanged; switch to a typed
+ * value if more units appear.
+ */
+enum class InputUnit { CHF, MONTH_INDEX, MONTH_COUNT }
+
+/** Whole units of a month-valued input (see [InputUnit]). */
+val Chf.wholeUnits: Int get() = (rappen / 100).toInt()
 
 data class DecisionSession(
     val profile: FinancialProfile,
@@ -81,6 +93,8 @@ data class DecisionSession(
     val marketAssumptions: Map<String, String> = emptyMap(),
     /** What the user did with each estimate (tried / replaced by own value / rejected). */
     val marketReviews: Map<String, MarketReview> = emptyMap(),
+    /** Builds the "don't do it" path from input values when it depends on them; null = [baseline]. */
+    val baselineFor: ((Map<String, Chf>) -> Scenario)? = null,
     /** Builds the main decision scenario from concrete input values. */
     val decision: (Map<String, Chf>) -> Scenario,
 ) {
@@ -113,7 +127,8 @@ data class DecisionSession(
         return plannedCut?.let { base.withExpenseReduction(profile.horizonMonths, it) } ?: base
     }
 
-    fun baselineScenario(): Scenario = baseline.withCommitments(profile.horizonMonths, constraints.commitments)
+    fun baselineScenario(values: Map<String, Chf> = emptyMap()): Scenario =
+        (baselineFor?.invoke(values) ?: baseline).withCommitments(profile.horizonMonths, constraints.commitments)
 
     val activeLabelKey: String get() = options.firstOrNull { it.id == activeOptionId }?.labelKey ?: decisionLabelKey
     val activeDecision: LifeDecision get() = options.firstOrNull { it.id == activeOptionId }?.let {
@@ -268,7 +283,7 @@ fun brief(session: DecisionSession): Briefing = with(session) {
 
     // 4. Timelines for Explore.
     val scenarios = buildMap {
-        put("baseline", simulate(profile, baselineScenario()))
+        put("baseline", simulate(profile, baselineScenario(worstInputs)))
         put("decision-nominal", simulate(profile, decision(worstInputs)))
         put("decision-worst", worst.worst.result)
         firstRepair?.let { r ->
@@ -474,6 +489,7 @@ internal fun DecisionSession.effectiveInputFact(i: DecisionInput): ExplanationFa
 private fun unknownFacts(u: UnknownImpact, s: DecisionSession) = listOfNotNull(
     inputFact(s.inputs.first { it.id == u.name }, s.state(u.name)),
     u.passesUpTo?.let { ExplanationFact("passes_up_to", FactValue.Money(it), Provenance.COMPUTED, "unknown:${u.name}") },
+    u.passesFrom?.let { ExplanationFact("passes_from", FactValue.Money(it), Provenance.COMPUTED, "unknown:${u.name}") },
     ExplanationFact("swing", FactValue.Money(u.swing), Provenance.COMPUTED, "unknown:${u.name}"),
     ExplanationFact("values_checked", FactValue.Count(u.worstMinimumCashByValue.size), Provenance.COMPUTED, "unknown:${u.name}"),
 )

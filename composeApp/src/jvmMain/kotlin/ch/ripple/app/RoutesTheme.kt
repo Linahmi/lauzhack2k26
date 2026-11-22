@@ -98,10 +98,10 @@ internal fun monthList(months: List<Int>): String = when (months.size) {
     else -> months.dropLast(1).joinToString(", ") { monthName(it) } + " and " + monthName(months.last())
 }
 
-/** Plain-language names for the fixture's label keys; unknown keys are shown readably, never hidden. */
+/** Plain-language names for the fixture's label keys; other keys shown readably; human labels as they are. */
 internal fun plain(key: String): String = mapOf(
     "option.move" to "Moving out now",
     "option.stay" to "Staying at home",
     "option.delay_move" to "Moving out two months later",
     "question.deposit" to "The deposit",
-)[key] ?: key.substringAfter('.').replace('_', ' ').replaceFirstChar { it.uppercase() }
+)[key] ?: if (Regex("""[a-z_]+(\.[a-z_]+)+""").matches(key)) key.substringAfter('.').replace('_', ' ').replaceFirstChar { it.uppercase() } else key

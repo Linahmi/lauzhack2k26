@@ -26,6 +26,7 @@ kotlin {
         }
         jvmTest.dependencies {
             implementation(kotlin("test"))
+            implementation(compose.desktop.uiTestJUnit4)
         }
     }
 }
@@ -34,4 +35,9 @@ compose.desktop {
     application {
         mainClass = "ch.ripple.app.MainKt"
     }
+}
+
+// UI tests must not depend on the local AI being installed: point them at a closed port.
+tasks.withType<Test>().configureEach {
+    environment("RIPPLE_OLLAMA_URL", System.getenv("ROUTES_TEST_OLLAMA_URL") ?: "http://127.0.0.1:9")
 }
