@@ -10,6 +10,29 @@ import server
 
 
 class TokenTests(unittest.TestCase):
+    def test_voice_only_setup_has_transcription_and_no_tools(self):
+        with patch.dict(os.environ, {"GEMINI_API_KEY": "test-only-not-a-credential", "GEMINI_LIVE_MODEL": "test-native-live"}), \
+                patch.object(server, "upstream", side_effect=[{"supportedGenerationMethods": ["bidiGenerateContent"]}, {"name": "test-ephemeral"}]):
+            setup = server.issue_token()["setup"]
+        self.assertNotIn("tools", setup)
+        self.assertIn("inputAudioTranscription", setup)
+        self.assertIn("outputAudioTranscription", setup)
+        self.assertIn("[ROUTES SAYS]", setup["systemInstruction"]["parts"][0]["text"])
+        self.assertIn("never calculate", server.INSTRUCTIONS)
+
+    def test_lan_requires_exact_host_and_allowlisted_phone(self):
+        from types import SimpleNamespace
+        handler = server.Handler.__new__(server.Handler)
+        handler.server = SimpleNamespace(server_port=8787, server_address=("192.168.1.2", 8787), allowed_clients=["192.168.1.3"])
+        handler.headers = {"Host": "192.168.1.2:8787"}
+        handler.client_address = ("192.168.1.3", 12345)
+        self.assertTrue(handler.local_request())
+        handler.client_address = ("192.168.1.4", 12345)
+        self.assertFalse(handler.local_request())
+        handler.client_address = ("192.168.1.3", 12345)
+        handler.headers["Origin"] = "https://example.org"
+        self.assertFalse(handler.local_request())
+
     def test_missing_key_is_explicit(self):
         with patch.dict(os.environ, {}, clear=True), self.assertRaises(server.ServiceError) as failure:
             server.issue_token()

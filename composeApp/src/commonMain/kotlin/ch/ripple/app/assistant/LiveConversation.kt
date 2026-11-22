@@ -36,6 +36,11 @@ fun LiveVoiceState.audioPhase(): LivePhase = when {
 interface LiveConversation {
     val available: Boolean
     val state: LiveVoiceState
+    /** Complete user utterances on the main thread; never model output. */
+    var onTranscript: ((String) -> Unit)?
+    suspend fun unavailableReason(): String?
+    /** App-authored session/engine text only. The transport wraps the readout. */
+    fun speak(text: String)
     fun start(verifiedContext: String)
     fun mute(muted: Boolean)
     fun muteSpeaker(muted: Boolean)
@@ -48,6 +53,9 @@ interface LiveConversation {
 object NoLiveVoice : LiveConversation {
     override val available = false
     override val state = LiveVoiceState()
+    override var onTranscript: ((String) -> Unit)? = null
+    override suspend fun unavailableReason() = "Live voice is not configured for this build"
+    override fun speak(text: String) = Unit
     override fun start(verifiedContext: String) = Unit
     override fun mute(muted: Boolean) = Unit
     override fun muteSpeaker(muted: Boolean) = Unit

@@ -16,6 +16,7 @@ import android.util.Base64
 import android.util.Log
 import androidx.compose.runtime.*
 import ch.ripple.app.assistant.*
+import ch.ripple.android.BuildConfig
 import kotlinx.coroutines.*
 import okhttp3.*
 import okhttp3.HttpUrl.Companion.toHttpUrl
@@ -32,6 +33,11 @@ class AndroidLiveConversation(
     private val beforeStart: () -> Unit,
 ) : LiveConversation {
     override val available = true
+    override var onTranscript: ((String) -> Unit)? = null
+    private var pendingReadout: String? = null
+    private var readoutActive = false
+    private var serverTurnFinished = true
+    private var inputText = ""
     override var state by mutableStateOf(LiveVoiceState())
         private set
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -68,14 +74,33 @@ class AndroidLiveConversation(
     private var previousDevice: AudioDeviceInfo? = null
     private var changedDevice = false
     private var previousSpeaker = false
-    private val tokenUrl: String? = if (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0)
-        "http://10.0.2.2:8787/token" else null // Release needs authenticated HTTPS provisioning, never dev cleartext.
+    private val tokenUrl = BuildConfig.LIVE_TOKEN_URL.takeIf { BuildConfig.DEBUG && it.isNotBlank() }
+
+    override suspend fun unavailableReason(): String? {
+        val url = tokenUrl ?: return "Live voice is only configured in the debug build"
+        return withContext(Dispatchers.IO) {
+            try {
+                val health = url.toHttpUrl().newBuilder().encodedPath("/health").build()
+                http.newBuilder().callTimeout(3, TimeUnit.SECONDS).build()
+                    .newCall(Request.Builder().url(health).build()).execute().use { response ->
+                        if (!response.isSuccessful) return@withContext "Token service is unavailable"
+                        val json = JSONObject(response.peekBody(4096).string())
+                        when {
+                            json.optInt("routesVoiceProtocol") != 1 -> "Restart the token service from feature/gemini-live-routes (voice-only setup required)"
+                            !json.optBoolean("configured") -> "The token service has no Gemini key or model configured"
+                            else -> null
+                        }
+                    }
+            } catch (_: Exception) { "Cannot reach the local token service" }
+        }
+    }
 
     override fun start(verifiedContext: String) {
         end()
         outputProbe = false
         beforeStart()
         pendingContext = verifiedContext.take(8_000)
+        state = state.copy(phase = LivePhase.Connecting)
         if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             waitingPermission = true; requestPermission(); return
         }
@@ -118,6 +143,8 @@ class AndroidLiveConversation(
                 if (token != generation) return@launch
                 val ephemeral = credentials.getString("token")
                 val setup = credentials.getJSONObject("setup")
+                require(setup.optJSONArray("tools").let { it == null || it.length() == 0 })
+                require(setup.getJSONObject("systemInstruction").toString().contains("[ROUTES SAYS]"))
                 state = state.copy(model = credentials.getString("model"))
                 val endpoint = "https://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContentConstrained"
                     .toHttpUrl().newBuilder().addQueryParameter("access_token", ephemeral).build()
@@ -154,20 +181,18 @@ class AndroidLiveConversation(
                 if (message.has("error")) { fail("Gemini rejected the live session. Check model access and quota."); return@launch }
                 if (message.has("goAway")) { fail("This live session is expiring. Please start a new conversation."); return@launch }
                 when (message.optJSONObject("voiceActivity")?.optString("type")) {
-                    "ACTIVITY_START" -> if (!state.muted) { state = state.copy(awaitingResponse = false, heard = "", reply = ""); updatePhase() }
+                    "ACTIVITY_START" -> if (!state.muted) {
+                        serverTurnFinished = false; inputText = ""
+                        state = state.copy(awaitingResponse = false, heard = "", reply = ""); updatePhase()
+                    }
                     "ACTIVITY_END" -> if (!state.muted) { state = state.copy(awaitingResponse = true); updatePhase() }
                 }
                 if (message.has("setupComplete") && !state.connected) {
                     deadline?.cancel()
                     prepareAudio(token)
                     state = state.copy(connected = true, muted = outputProbe)
-                    // Only actual verified facts; no conversational parsing or session mutation.
-                    send(JSONObject().put("clientContent", JSONObject().put("turns", org.json.JSONArray().put(
-                        JSONObject().put("role", "user").put("parts", org.json.JSONArray().put(JSONObject().put("text",
-                            if (outputProbe) "Audio playback test. Please say exactly: Ripple audio test. I can speak clearly."
-                            else "App context, not a spoken request. $pendingContext Wait for the user's speech.")))))
-                        .put("turnComplete", outputProbe)))
-                    if (outputProbe) state = state.copy(awaitingResponse = true)
+                    // No generated greeting or financial context. The app alone supplies readouts.
+                    if (outputProbe) speak("Routes audio test. I can speak clearly.")
                     else audio?.startMicrophone()
                     updatePhase()
                     deadline = scope.launch { delay(9 * 60_000L); if (token == generation) fail("The voice session has reached its time limit. Start a new conversation.") }
@@ -175,11 +200,18 @@ class AndroidLiveConversation(
                 val content = message.optJSONObject("serverContent") ?: return@launch
                 if (content.optBoolean("interrupted")) {
                     replayJob?.cancel(); replayJob = null
-                    discardOutput = false; audio?.interrupt(); replayAudio.reset(); replayOverflow = false; speaking = false; updatePhase()
+                    discardOutput = true; readoutActive = false
+                    audio?.interrupt(); replayAudio.reset(); replayOverflow = false; speaking = false; updatePhase()
                 }
+                content.optJSONObject("interimInputTranscription")?.optString("text")?.let {
+                    state = state.copy(heard = it.take(4_000)) // Display only. Never dispatched.
+                }
+                var finalTranscript: String? = null
                 content.optJSONObject("inputTranscription")?.optString("text")?.takeIf { it.isNotBlank() }?.let {
                     inputTranscriptionEvents++
-                    state = state.copy(heard = (state.heard + it).takeLast(2_000), awaitingResponse = !speaking, responseStopped = false)
+                    // 3.1+ sends a final utterance here; 2.5 streams fragments until turnComplete.
+                    if (state.model.contains("2.5")) inputText += it else finalTranscript = it
+                    state = state.copy(heard = (finalTranscript ?: inputText).takeLast(4_000), responseStopped = false)
                     updatePhase()
                 }
                 content.optJSONObject("outputTranscription")?.optString("text")?.takeIf { it.isNotBlank() }?.let {
@@ -201,25 +233,40 @@ class AndroidLiveConversation(
                     receivedAudioBytes += bytes.size; responseAudioBytes += bytes.size; receivedAudioChunks++
                     outputPeak = maxOf(outputPeak, LivePcmAudio.level(bytes))
                     if (receivedAudioChunks == 1) Log.i("RippleLive", "Gemini audio: mime=$mime bytes=${bytes.size} pcmLevel=${LivePcmAudio.level(bytes)}")
-                    if (!discardOutput) {
+                    // Unsolicited model replies to microphone audio are never played.
+                    if (readoutActive && !discardOutput) {
                         state = state.copy(awaitingResponse = false)
                         if (!replayOverflow && replayAudio.size() + bytes.size <= 1_440_000) replayAudio.write(bytes)
                         else { replayOverflow = true; replayAudio.reset() } // Never replay a truncated response.
                         if (audio?.enqueue(bytes) != true) { fail("Audio playback could not keep up. Please reconnect."); return@launch }
                     }
                 }
+                if (content.optBoolean("waitingForInput") && !readoutActive) serverTurnFinished = true
                 if (content.optBoolean("turnComplete")) {
+                    serverTurnFinished = true
+                    if (inputText.isNotBlank()) { finalTranscript = inputText; inputText = "" }
                     Log.i("RippleLive", "Gemini turn complete: pcmBytes=$responseAudioBytes discarded=$discardOutput")
                     completedReplay = if (replayOverflow) ByteArray(0) else replayAudio.toByteArray()
                     replayAudio.reset(); replayOverflow = false
                     state = state.copy(canReplay = completedReplay.isNotEmpty(), awaitingResponse = false)
-                    if (responseAudioBytes == 0L && !discardOutput && responseHasText) {
+                    if (responseAudioBytes == 0L && readoutActive && !discardOutput && responseHasText) {
                         fail("Gemini returned text without playable audio. Please reconnect."); return@launch
                     }
+                    val hadReadoutAudio = responseAudioBytes > 0
                     responseAudioBytes = 0L; responseHasText = false
-                    discardOutput = false; audio?.turnComplete()
+                    if (readoutActive) {
+                        if (!hadReadoutAudio) { fail("Gemini returned no playable readout. You can type instead."); return@launch }
+                        audio?.turnComplete()
+                    }
                     if (!speaking) updatePhase()
                 }
+                // Process the entire server message before the callback can enqueue a client turn.
+                finalTranscript?.takeIf { !outputProbe && it.isNotBlank() }?.let {
+                    audio?.stopMicrophone()
+                    state = state.copy(microphoneActive = false, awaitingResponse = true)
+                    onTranscript?.invoke(it)
+                }
+                sendPendingReadout()
             } catch (_: Exception) { if (token == generation) fail("The voice service returned an unsupported response. You can reconnect or type instead.") }
         }
     }
@@ -262,6 +309,7 @@ class AndroidLiveConversation(
             }
         }, onPlayback = { playing, level -> scope.launch { if (token == generation) {
             speaking = playing; state = state.copy(playbackActive = playing, outputLevel = if (state.speakerMuted) 0f else level); updatePhase()
+            if (!playing && readoutActive && serverTurnFinished) finishReadout(token)
         } } }, onError = { scope.launch { if (token == generation) fail("Microphone or speaker unavailable. You can type instead.") } })
         audioStatus = scope.launch {
             while (token == generation) {
@@ -276,6 +324,44 @@ class AndroidLiveConversation(
     }
     private fun send(message: JSONObject) { if (socket?.send(message.toString()) != true) error("Session disconnected") }
     private fun updatePhase() { state = state.copy(phase = state.audioPhase()) }
+
+    override fun speak(text: String) {
+        check(android.os.Looper.myLooper() == android.os.Looper.getMainLooper())
+        if (!state.connected || text.isBlank()) return
+        pendingReadout = listOfNotNull(pendingReadout, text).joinToString("\n")
+        sendPendingReadout()
+    }
+
+    private fun sendPendingReadout() {
+        if (!state.connected || !serverTurnFinished || readoutActive) return
+        val text = pendingReadout ?: return
+        pendingReadout = null
+        readoutActive = true; serverTurnFinished = false; discardOutput = false
+        responseAudioBytes = 0; responseHasText = false
+        val wasCapturing = state.microphoneActive
+        audio?.stopMicrophone(); audio?.interrupt()
+        state = state.copy(microphoneActive = false, awaitingResponse = true, heard = "", reply = "")
+        // Close the input stream before the explicit client readout to prevent echo / interruption.
+        if (wasCapturing) send(JSONObject().put("realtimeInput", JSONObject().put("audioStreamEnd", true)))
+        send(JSONObject().put("clientContent", JSONObject().put("turns", org.json.JSONArray().put(
+            JSONObject().put("role", "user").put("parts", org.json.JSONArray().put(
+                JSONObject().put("text", "[ROUTES SAYS]\n$text\n[/ROUTES SAYS]")))))
+            .put("turnComplete", true)))
+        updatePhase()
+    }
+
+    private fun finishReadout(token: Int) {
+        readoutActive = false
+        sendPendingReadout()
+        scope.launch {
+            delay(250) // Playback has drained; let the speaker echo tail finish before capture resumes.
+            if (token == generation && state.connected && !readoutActive && !state.muted && !outputProbe) {
+                audio?.startMicrophone()
+                state = state.copy(awaitingResponse = false)
+                updatePhase()
+            }
+        }
+    }
 
     override fun mute(muted: Boolean) {
         if (!state.connected || state.muted == muted) return
@@ -337,6 +423,7 @@ class AndroidLiveConversation(
         changedDevice = false; previousDevice = null
         if (modeOwned) { manager.mode = oldMode; modeOwned = false }
         speaking = false; discardOutput = false; pendingContext = ""; speakerMutedByUser = false
+        pendingReadout = null; readoutActive = false; serverTurnFinished = true; inputText = ""
         receivedAudioBytes = 0L; responseAudioBytes = 0L; receivedAudioChunks = 0
         outputPeak = 0f; sentAudioBytes = 0L; inputTranscriptionEvents = 0; responseHasText = false
         replayAudio.reset(); replayOverflow = false; completedReplay = ByteArray(0)
