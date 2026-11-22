@@ -1,6 +1,5 @@
 [README.md](https://github.com/user-attachments/files/35231065/README.md)
-# Routes
-
+# <img width="442" height="182" alt="image" src="https://github.com/user-attachments/assets/d8411f0d-a640-4fe3-ac5c-e3be095fb74e" />
 **Don't predict the future. Make it explorable.**
 
 Routes is a cross-platform financial decision explorer. It helps people ask *“What happens if I move out, work fewer hours, or study abroad?”* and investigate how those choices may affect their cash flow, uncertainty, and personal commitments. Rather than issuing an affordability verdict, routes exposes the assumptions, compares possible paths, and lets the person decide what matters.
